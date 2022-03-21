@@ -6,12 +6,14 @@ import numpy as np
 class vehicularNetworkEnv(dm_env.Environment):
     """Vehicular Network Environment built on the dm_env framework."""
 
-    def __init__(self, env_arams):
+    def __init__(self, information_set):
         """Initialize the environment.
 
         Args:
             env_params: Environment parameters.
         """
+        self._information_set = env_arams['information_set']
+
         self._reset_next_step = True
 
     def reset(self) -> dm_env.TimeStep:
