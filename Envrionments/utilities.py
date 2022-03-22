@@ -1,7 +1,21 @@
+from dataStruct import vehicle
+from dataStruct import edge
+
 import numpy as np
 
 
+class Queuing():
+    # TODO: implement the queueing model
+    """This class is used to get the queue time of the edge with the highest queue length"""
+    def __init__(self, vehicle_list, edge_list):
+        self.vehicle_list = vehicle_list
+        self.edge_list = edge_list
+
+
+
+
 class V2I_Transmission():
+    # TODO: implement the V2I transmission model
     """
     This class is used to define the transmission of a vehicle to an edge.
     """
@@ -9,6 +23,7 @@ class V2I_Transmission():
         self.vehicle = vehicle
         self.intersection = intersection
         self.time_to_arrival = time_to_arrival
+
     @staticmethod
     def compute_transmission_rate(SNR, bandwidth):
         """
@@ -16,7 +31,7 @@ class V2I_Transmission():
         :param bandwidth:
         :return: transmission rate measure by Byte/s
         """
-        return int(VehicularNetworkEnv.cover_MHz_to_Hz(bandwidth) * np.log2(1 + SNR) / 8)
+        return int(V2I_Transmission.cover_MHz_to_Hz(bandwidth) * np.log2(1 + SNR) / 8)
 
     @staticmethod
     def cover_MHz_to_Hz(MHz):
