@@ -9,8 +9,7 @@ class applicationList(object):
         application_number: int,
         view_number: int,
         views_per_application: int,
-        seed: int
-        ) -> None:
+        seed: int) -> None:
         """ initialize the application list.
         Args:
             application_number: the number of application list.
@@ -58,8 +57,7 @@ class informationList(object):
         data_size_up_bound: float,
         data_types_number: int,
         update_interval_low_bound: int,
-        update_interval_up_bound: int
-        ) -> None:
+        update_interval_up_bound: int) -> None:
         """ initialize the information list.
         Args:
             information_number: the number of information list.
@@ -175,4 +173,151 @@ class viewList(object):
         self.view_list = view_list
 
 
+class location(object):
+    """ the location of the node. """
+    def __init__(self, x: float, y: float) -> None:
+        """ initialize the location.
+        Args:
+            x: the x coordinate.
+            y: the y coordinate.
+        """
+        self._x = x
+        self._y = y
 
+    def get_x(self) -> float:
+        return self._x
+
+    def get_y(self) -> float:
+        return self._y
+
+    def get_distance(self, location: "location") -> float:
+        """ get the distance between two locations.
+        Args:
+            location: the location.
+        Returns:
+            the distance.
+        """
+        return np.math.sqrt(
+            (self._x - location.get_x())**2 + 
+            (self._y - location.get_y())**2
+        )
+
+
+class trajectories(object):
+    """ the trajectories of the node. """
+    def __init__(self, max_timestampes: int, locations: list) -> None:
+        """ initialize the trajectories.
+        Args:
+            max_timestampes: the maximum number of timestampes.
+            locations: the location list.
+        """
+        self._max_timestampes = max_timestampes
+        self._locations = locations
+
+        if len(self._locations) != self._max_timestampes:
+            raise ValueError("The number of locations must be equal to the max_timestampes.")
+
+    def get_location(self, timestamp: int) -> location:
+        """ get the location of the timestamp.
+        Args:
+            timestamp: the timestamp.
+        Returns:
+            the location.
+        """
+        return self._locations[timestamp]
+
+    def get_locations(self) -> list:
+        """ get the locations.
+        Returns:
+            the locations.
+        """
+        return self._locations
+    
+
+class vehicle(object):
+    """" the vehicle. """
+    def __init__(
+        self, 
+        vehicle_no: int,
+        vehicle_trajectories: trajectories,
+        information_number: int,
+        max_information_number: int,
+        max_sensing_cost: float,
+        transmission_power: float,
+        seed: int) -> None:
+        """ initialize the vehicle.
+        Args:
+            vehicle_no: the index of vehicle. e.g. 0, 1, 2, ...
+            vehicle_trajectories: the trajectory of the vehicle.
+            information_number: the number of information list.
+            max_information_number: the maximum number of information, which can be sensed by the vehicle.
+            max_sensing_cost: the maximum sensing cost.
+            transmission_power: the transmission power.
+            seed: the random seed.
+        """
+        self._vehicle_no = vehicle_no
+        self._vehicle_trajectories = vehicle_trajectories
+        self._information_number = information_number
+        self._max_information_number = max_information_number
+        self._max_sensing_cost = max_sensing_cost
+        self._transmission_power = transmission_power
+        self._seed = seed
+
+        if self._max_information_number > self._information_number:
+            raise ValueError("The max information number must be less than the information number.")
+        
+        self.information_canbe_sensed = self.information_types_can_be_sensed()
+
+    def get_vehicle_no(self) -> int:
+        return self._vehicle_no
+
+    def get_transmission_power(self) -> float:
+        return self._transmission_power
+
+    def information_types_can_be_sensed(self) -> list:
+        np.random.seed(self._seed)
+        return list(np.random.choice(
+            a=self.information_number,
+            size=self._max_information_number,
+            replace=False))
+    
+    def get_vehicle_location(self, timestamp: int) -> location:
+        return self._vehicle_trajectories.get_location(timestamp)
+
+    def get_distance_between_edge(self, timestamp: int, edge_location: location) -> float:
+        return self._vehicle_trajectories.get_location(timestamp).get_distance(edge_location)
+        
+
+class edge(object):
+    """ the edge. """
+    def __init__(
+        self, 
+        edge_no: int,
+        edge_location: location,
+        communication_range: float,
+        bandwidth: float) -> None:
+        """ initialize the edge.
+        Args:
+            edge_no: the index of edge. e.g. 0, 1, 2, ...
+            edge_location: the location of the edge.
+            communication_range: the range of V2I communications.
+            bandwidth: the bandwidth of edge.
+        """
+        self._edge_no = edge_no
+        self._edge_location = edge_location
+        self._communication_range = communication_range
+        self._bandwidth = bandwidth
+
+    def get_edge_no(self) -> int:
+        return self._edge_no
+
+    def get_edge_location(self) -> location:
+        return self._edge_location
+
+    def get_communication_range(self) -> float:
+        return self._communication_range
+    
+    def get_bandwidth(self) -> float:
+        return self._bandwidth
+
+    

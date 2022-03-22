@@ -23,7 +23,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             space.
         Returns the first `TimeStep` of a new episode.
         """
-        # TODO implement
+        # TODO: implement
         # 
         self._reset_next_step = False
         return dm_env.restart(self._observation())
@@ -34,7 +34,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         episode is reached, you are responsible for calling `reset()`
         to reset this environment's state.
         """
-        # TODO implement
+        # TODO: implement
         if self._reset_next_step:
             return self.reset()
         # do actions
@@ -89,6 +89,6 @@ class vehicularNetworkEnv(dm_env.Environment):
     
     def _observation(self) -> np.ndarray:
         """Return the observation of the environment."""
-        # TODO implement
+        # TODO: implement
         return self.state
     
