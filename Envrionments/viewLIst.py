@@ -1,6 +1,7 @@
 import numpy as np
 
 class viewList(object):
+    """ the view list. """
     def __init__(
         self, 
         number: int, 
@@ -38,11 +39,11 @@ class viewList(object):
             information_number = self._random_information_number[_]
             np.random.seed(self._seeds[_])
             self.view_list.append(
-                np.random.choice(
+                list(np.random.choice(
                     a=self._data_types_number, 
                     size=information_number,
                     replace=False
-                )
+                ))
             )
         
     def get_view_list(self) -> list:
@@ -68,4 +69,16 @@ if __name__ == "__main__":
         seeds=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     )
     print(view.get_view_list())
+    """ Print Example:
+    [[2, 9, 6, 4, 0, 3], 
+    [4, 1, 5, 0, 7, 2, 3, 6, 9], 
+    [5, 4, 1, 2, 9, 6], 
+    [3], 
+    [9], 
+    [8, 1], 
+    [8, 5, 0, 2, 1, 9, 7, 3], 
+    [8, 6, 9, 0, 2, 5, 7], 
+    [8, 4, 7], 
+    [8, 2, 5, 6, 3]]
+    """
 
