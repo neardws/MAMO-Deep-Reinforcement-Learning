@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 class timeSlots(object):
     """The set of discrete time slots of the system"""
@@ -236,7 +237,7 @@ class vehicleList(object):
     def __init__(
         self, 
         vehicles_number: int, 
-        vehicle_trajectories: list,
+        vehicle_trajectories_file_name: str,
         information_number: int,
         max_information_number: int,
         min_sensing_cost: float,
@@ -246,7 +247,7 @@ class vehicleList(object):
         """ initialize the vehicle list.
         Args:
             vehicles_number: the number of vehicles.
-            vehicle_trajectories: the trajectory list.
+            vehicle_trajectories_file_name: the file name of the vehicle trajectories.
             information_number: the number of information list.
             max_information_number: the maximum number of information, which can be sensed by the vehicle.
             min_sensing_cost: the minimum sensing cost.
@@ -255,13 +256,15 @@ class vehicleList(object):
             seeds: the random seed list.
         """
         self._vehicles_number = vehicles_number
-        self._vehicle_trajectories = vehicle_trajectories
+        self._vehicle_trajectories_file_name = vehicle_trajectories_file_name
         self._information_number = information_number
         self._max_information_number = max_information_number
         self._min_sensing_cost = min_sensing_cost
         self._max_sensing_cost = max_sensing_cost
         self._transmission_power = transmission_power
         self._seeds = seeds
+
+        self._vehicle_trajectories = self.read_vehicle_trajectories()
 
         self._vehicle_list = []
         for i in range(self._vehicles_number):
@@ -292,6 +295,50 @@ class vehicleList(object):
 
     def set_vehicles_number(self, vehicles_number: int) -> None:
         self._vehicles_number = vehicles_number
+
+    def read_vehicle_trajectories(self, timeSlots: timeSlots) -> list:
+
+        df = pd.read_csv(
+            self._vehicle_trajectories_file_name, 
+            names=['vehicle_id', 'time', 'longitude', 'latitude'], header=0)
+
+        max_vehicle_id = df['vehicle_id'].max()
+
+        selected_vehicle_id = []
+        for vehicle_id in range(int(max_vehicle_id)):
+            new_df = df[df['vehicle_id'] == vehicle_id]
+            max_x = new_df['longitude'].max()
+            max_y = new_df['latitude'].max()
+            min_x = new_df['longitude'].min()
+            min_y = new_df['latitude'].min()
+            distance = np.sqrt((max_x - min_x) ** 2 + (max_y - min_y) ** 2)
+            selected_vehicle_id.append(
+                {
+                    "vehicle_id": vehicle_id,
+                    "distance": distance
+                })
+
+        selected_vehicle_id.sort(key=lambda x : x["distance"], reverse=True)
+        new_vehicle_id = 0
+        vehicle_trajectories = []
+        for vehicle_id in selected_vehicle_id[ : self._vehicles_number]:
+            new_df = df[df['vehicle_id'] == vehicle_id["vehicle_id"]]
+            loc_list = []
+            for row in new_df.itertuples():
+                # time = getattr(row, 'time')
+                x = getattr(row, 'longitude')
+                y = getattr(row, 'latitude')
+                loc = location(x, y)
+                loc_list.append(loc)
+            new_vehicle_trajectory = trajectory(
+                vehicle_id=new_vehicle_id,
+                timeSlots=timeSlots,
+                loc_list=loc_list
+            )
+            new_vehicle_id += 1
+            vehicle_trajectories.append(new_vehicle_trajectory)
+
+        return vehicle_trajectories
 
 
 class edge(object):
