@@ -265,9 +265,8 @@ class vehicleTrajectoriesProcessor(object):
 class Queuing(object):
     # TODO: implement the queueing model
     """This class is used to get the queue time of the edge with the highest queue length"""
-    def __init__(self, vehicle_list, edge_list):
-        self.vehicle_list = vehicle_list
-        self.edge_list = edge_list
+    def __init__(self, vehicle: vehicle, vehicle_action: vehicle_action):
+        self._vehicle = vehicle
 
 
 class V2I_Transmission(object):

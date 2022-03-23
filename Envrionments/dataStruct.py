@@ -1,3 +1,4 @@
+from typing import Any
 import numpy as np
 import pandas as pd
 
@@ -217,6 +218,9 @@ class vehicle(object):
     def get_distance_between_edge(self, nowTimeSlot: int, edge_location: location) -> float:
         return self._vehicle_trajectory.get_location(nowTimeSlot).get_distance(edge_location)
 
+    def get_max_information_number(self) -> int:
+        return self._max_information_number
+
     def set_information_number(self, information_number: int) -> None:
         self._information_number = information_number
     
@@ -341,25 +345,104 @@ class vehicleList(object):
         return vehicle_trajectories
 
 
+class vehicleAction(object):
+    """ the action of the vehicle. """
+    def __init__(
+        self, 
+        vehicle_no: int,
+        now_time: int,
+        vehicle_list: vehicleList,
+        sensed_information_types: list,
+        sensing_frequencies: list,
+        uploading_priorities: list,
+        transmission_power: float, 
+        action_time: int) -> None:
+        """ initialize the vehicle action.
+        Args:
+            vehicle_no: the index of vehicle. e.g. 0, 1, 2, ...
+            now_time: the current time.
+            vehicle_list: the vehicle list.
+            sensed_information_types: the information types that can be sensed.
+            sensing_frequencies: the sensing frequencies.
+            uploading_priorities: the uploading priorities.
+            transmission_power: the transmission power.
+            action_time: the time of the action.
+        """
+        self._vehicle_no = vehicle_no
+        self._now_time = now_time
+        self._vehicle_list = vehicle_list
+        self._sensed_information_types = sensed_information_types
+        self._sensing_frequencies = sensing_frequencies
+        self._uploading_priorities = uploading_priorities
+        self._transmission_power = transmission_power
+        self._action_time = action_time
+
+        if not self.check_action(now_time, vehicle_list):
+            raise ValueError("The action is not valid.")
+
+    def check_action(self, nowTimeSlot: int, vehicleList: vehicleList) -> bool:
+        """ check the action.
+        Args:
+            nowTimeSlot: the time of the action.
+        Returns:
+            True if the action is valid.
+        """
+        if self._action_time != nowTimeSlot:
+            return False
+        if self._vehicle_no >= len(vehicleList.get_vehicle_list()):
+            return False
+        vehicle = vehicleList.get_vehicle(self._vehicle_no)
+        if not (len(self._sensed_information_types) == len(self._sensing_frequencies) \
+            == len(self._uploading_priorities) == len(vehicle.get_max_information_number())):
+            return False
+        if self._transmission_power > vehicle.get_transmission_power():
+            return False
+        return True
+
+    @staticmethod
+    def generate_from_neural_network_output(network_output: Any):
+        """ generate the vehicle action from the neural network output.
+        Args:
+            network_output: the output of the neural network.
+        Returns:
+            the vehicle action.
+        """
+
+        return vehicleAction(
+            vehicle_no=network_output[0],
+            sensed_information_types=network_output[1],
+            sensing_frequencies=network_output[2],
+            uploading_priorities=network_output[3],
+            transmission_power=network_output[4],
+            action_time=network_output[5]
+        )
+
+
+
+
 class edge(object):
     """ the edge. """
     def __init__(
         self, 
         edge_no: int,
+        information_number: int,
         edge_location: location,
         communication_range: float,
         bandwidth: float) -> None:
         """ initialize the edge.
         Args:
             edge_no: the index of edge. e.g. 0, 1, 2, ...
+            information_number: the number of information list.
             edge_location: the location of the edge.
             communication_range: the range of V2I communications.
             bandwidth: the bandwidth of edge.
         """
         self._edge_no = edge_no
+        self._information_number = information_number
         self._edge_location = edge_location
         self._communication_range = communication_range
         self._bandwidth = bandwidth
+        self._information_in_edge = np.zeros(shape=(self._information_number,), dtype=np.int)
 
     def get_edge_no(self) -> int:
         return self._edge_no
