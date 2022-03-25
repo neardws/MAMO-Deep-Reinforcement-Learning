@@ -1,6 +1,8 @@
-from typing import Any
 import numpy as np
 import pandas as pd
+
+from Envrionments.utilities import v2iTransmission
+# from utilities import v2iTransmission
 
 class timeSlots(object):
     """The set of discrete time slots of the system"""
@@ -26,71 +28,100 @@ class timeSlots(object):
     def get_number(self) -> int:
         return self._number
 
-class informationList(object):
+
+class information(object):
     """
-    This class is used to store the information list of the environment.
+    the object of information, which is used to store the information flow,
+    including information generation, queuing, transmission, 
+    and finally received at the edge.
     """
     def __init__(
-        self, 
-        information_number: int, 
-        seed: int, 
-        data_size_low_bound: float,
-        data_size_up_bound: float,
-        data_types_number: int,
-        update_interval_low_bound: int,
-        update_interval_up_bound: int) -> None:
-        """ initialize the information list.
+        self,
+        type: int,
+        vehicle_no: int,
+        edge_no: int = -1,
+        generation_time: float = -1,
+        inter_arrival_interval: float = -1,
+        arrival_moment: float = -1,
+        queuing_time: float = -1,
+        transmission_time: float = -1,
+        received_moment: float = -1) -> None:
+        """ initialize the information.
         Args:
-            information_number: the number of information list.
-            seed: the random seed.
-            data_size_low_bound: the low bound of the data size.
-            data_size_up_bound: the up bound of the data size.
-            data_types_number: the number of data types.
-            update_interval_low_bound: the low bound of the update interval.
-            update_interval_up_bound: the up bound of the update interval.
+            type: the type of the information.
+            vehicle_no: the index of the vehicle.
+            edge_no: the index of the edge.
+            generation_time: the generation time of the information.
+            inter_arrival_interval: the inter-arrival interval of the information.
+            arrival_moment: the arrival moment of the information.
+            queuing_time: the queuing time of the information.
+            transmission_time: the transmission time of the information.
+            received_moment: the received moment of the information.
         """
-        self._number = information_number
-        self._seed = seed
-        self._data_size_low_bound = data_size_low_bound
-        self._data_size_up_bound = data_size_up_bound
-        self._data_types_number = data_types_number
-        self._update_interval_low_bound = update_interval_low_bound
-        self._update_interval_up_bound = update_interval_up_bound
+        self._type = type
+        self._vehicle_no = vehicle_no
+        self._edge_no = edge_no
+        self._generation_time = generation_time
+        self._inter_arrival_interval = inter_arrival_interval
+        self._arrival_moment = arrival_moment
+        self._queuing_time = queuing_time
+        self._transmission_time = transmission_time
+        self._received_moment = received_moment
 
-        if self._data_types_number != self._number:
-            self._data_types_number = self._number
-        np.random.seed(self._seed)
-        self.types_of_information = np.random.permutation(list(range(self._data_types_number)))
-
-        np.random.seed(self._seed)
-        self.data_size_of_information = np.random.uniform(
-            low=self._data_size_low_bound,
-            high=self._data_size_up_bound,
-            size=self._number
-        )
-
-        np.random.seed(self._seed)
-        self.update_interval_of_information = np.random.randint(
-            size=self._number, 
-            low=self._update_interval_low_bound, 
-            high=self._update_interval_up_bound
-        )
-
-        self.information_list = []
-        for i in range(self._number):
-            self.information_list.append(
-                {
-                    "type": self.types_of_information[i],
-                    "data_size": self.data_size_of_information[i],
-                    "update_interval": self.update_interval_of_information[i]
-                }
-            )
-        
-    def get_information_list(self) -> list:
-        return self.information_list
+    def get_type(self) -> int:
+        return self._type
     
-    def set_information_list(self, information_list) -> None:
-        self.information_list = information_list
+    def set_type(self, type: int) -> None:
+        self._type = type
+    
+    def get_vehicle_no(self) -> int:
+        return self._vehicle_no
+    
+    def set_vehicle_no(self, vehicle_no: int) -> None:
+        self._vehicle_no = vehicle_no
+    
+    def get_edge_no(self) -> int:
+        return self._edge_no
+
+    def set_edge_no(self, edge_no: int) -> None:
+        self._edge_no = edge_no
+    
+    def get_generation_time(self) -> float:
+        return self._generation_time
+    
+    def set_generation_time(self, generation_time: float) -> None:
+        self._generation_time = generation_time
+
+    def get_inter_arrival_interval(self) -> float:
+        return self._inter_arrival_interval
+
+    def set_inter_arrival_interval(self, inter_arrival_interval: float) -> None:
+        self._inter_arrival_interval = inter_arrival_interval
+
+    def get_arrival_moment(self) -> float:
+        return self._arrival_moment
+
+    def set_arrrival_moment(self, arrival_moment: float) -> None:
+        self._arrival_moment = arrival_moment
+    
+    def get_queuing_time(self) -> float:
+        return self._queuing_time
+    
+    def set_queuing_time(self, queuing_time: float) -> None:
+        self._queuing_time = queuing_time
+    
+    def get_transmission_time(self) -> float:
+        return self._transmission_time
+    
+    def set_transmission_time(self, transmission_time: float) -> None:
+        self._transmission_time = transmission_time
+    
+    def get_received_moment(self) -> float:
+        return self._received_moment
+    
+    def set_received_moment(self, received_moment: float) -> None:
+        self._received_moment = received_moment
+    
 
 class location(object):
     """ the location of the node. """
@@ -135,7 +166,7 @@ class trajectory(object):
         if len(self._locations) != self._max_timestampes:
             raise ValueError("The number of locations must be equal to the max_timestampes.")
 
-    def get_location(self, nowTimeSlot: int) -> location:
+    def get_location(self, nowTimeSlot: int):
         """ get the location of the timestamp.
         Args:
             timestamp: the timestamp.
@@ -215,11 +246,17 @@ class vehicle(object):
     def get_vehicle_location(self, nowTimeSlot: int) -> location:
         return self._vehicle_trajectory.get_location(nowTimeSlot)
 
-    def get_distance_between_edge(self, nowTimeSlot: int, edge_location: location) -> float:
+    def get_distance_between_edge(self, nowTimeSlot: int, edge_location) -> float:
         return self._vehicle_trajectory.get_location(nowTimeSlot).get_distance(edge_location)
 
     def get_max_information_number(self) -> int:
         return self._max_information_number
+    
+    def get_information_canbe_sensed(self) -> list:
+        return self.information_canbe_sensed
+    
+    def get_vehicle_trajectory(self) -> trajectory:
+        return self._vehicle_trajectory
 
     def set_information_number(self, information_number: int) -> None:
         self._information_number = information_number
@@ -352,7 +389,7 @@ class vehicleAction(object):
         vehicle_no: int,
         now_time: int,
         vehicle_list: vehicleList,
-        sensed_information_types: list,
+        sensed_information: list,
         sensing_frequencies: list,
         uploading_priorities: list,
         transmission_power: float, 
@@ -362,7 +399,9 @@ class vehicleAction(object):
             vehicle_no: the index of vehicle. e.g. 0, 1, 2, ...
             now_time: the current time.
             vehicle_list: the vehicle list.
-            sensed_information_types: the information types that can be sensed.
+            sensed_information: the sensed information.
+                e.g., 0 or 1, indicates whether the information is sensed or not.
+                and the type of information is rocorded in vehicle.information_canbe_sensed .
             sensing_frequencies: the sensing frequencies.
             uploading_priorities: the uploading priorities.
             transmission_power: the transmission power.
@@ -370,8 +409,7 @@ class vehicleAction(object):
         """
         self._vehicle_no = vehicle_no
         self._now_time = now_time
-        self._vehicle_list = vehicle_list
-        self._sensed_information_types = sensed_information_types
+        self._sensed_information = sensed_information
         self._sensing_frequencies = sensing_frequencies
         self._uploading_priorities = uploading_priorities
         self._transmission_power = transmission_power
@@ -392,12 +430,27 @@ class vehicleAction(object):
         if self._vehicle_no >= len(vehicleList.get_vehicle_list()):
             return False
         vehicle = vehicleList.get_vehicle(self._vehicle_no)
-        if not (len(self._sensed_information_types) == len(self._sensing_frequencies) \
+        if not (len(self._sensed_information) == len(self._sensing_frequencies) \
             == len(self._uploading_priorities) == len(vehicle.get_max_information_number())):
             return False
         if self._transmission_power > vehicle.get_transmission_power():
             return False
         return True
+
+    def get_sensed_information(self) -> list:
+        return self._sensed_information
+
+    def get_sensing_frequencies(self) -> list:
+        return self._sensing_frequencies
+    
+    def get_uploading_priorities(self) -> list:
+        return self._uploading_priorities
+
+    def get_transmission_power(self) -> float:
+        return self._transmission_power
+
+    def get_action_time(self) -> int:
+        return self._action_time
 
     @staticmethod
     def generate_from_neural_network_output(network_output: Any):
@@ -407,7 +460,7 @@ class vehicleAction(object):
         Returns:
             the vehicle action.
         """
-
+        # TODO: implement this function to generate_from_neural_network_output.
         return vehicleAction(
             vehicle_no=network_output[0],
             sensed_information_types=network_output[1],
@@ -416,8 +469,6 @@ class vehicleAction(object):
             transmission_power=network_output[4],
             action_time=network_output[5]
         )
-
-
 
 
 class edge(object):
@@ -569,3 +620,158 @@ class viewList(object):
             view_list: the view list.
         """
         self.view_list = view_list
+
+
+class informationList(object):
+    """
+    This class is used to store the information list of the environment.
+    to store the whole information list, 
+    which randomly initialize the characteristics of each information,
+    including the type, data size, update interval.
+    """
+    def __init__(
+        self, 
+        information_number: int, 
+        seed: int, 
+        data_size_low_bound: float,
+        data_size_up_bound: float,
+        data_types_number: int,
+        update_interval_low_bound: int,
+        update_interval_up_bound: int,
+        vehicle_list: vehicleList,
+        edge_node: edge,
+        additive_white_gaussian_noise,
+        mean_channel_fadding_gain,
+        second_channel_fadding_gain,
+        path_loss_exponent) -> None:
+        """ initialize the information list.
+        Args:
+            information_number: the number of information list.
+            seed: the random seed.
+            data_size_low_bound: the low bound of the data size.
+            data_size_up_bound: the up bound of the data size.
+            data_types_number: the number of data types.
+            update_interval_low_bound: the low bound of the update interval.
+            update_interval_up_bound: the up bound of the update interval.
+        """
+        self._number = information_number
+        self._seed = seed
+        self._data_size_low_bound = data_size_low_bound
+        self._data_size_up_bound = data_size_up_bound
+        self._data_types_number = data_types_number
+        self._update_interval_low_bound = update_interval_low_bound
+        self._update_interval_up_bound = update_interval_up_bound
+
+        if self._data_types_number != self._number:
+            self._data_types_number = self._number
+        np.random.seed(self._seed)
+        self.types_of_information = np.random.permutation(list(range(self._data_types_number)))
+
+        np.random.seed(self._seed)
+        self.data_size_of_information = np.random.uniform(
+            low=self._data_size_low_bound,
+            high=self._data_size_up_bound,
+            size=self._number
+        )
+
+        np.random.seed(self._seed)
+        self.update_interval_of_information = np.random.randint(
+            size=self._number, 
+            low=self._update_interval_low_bound, 
+            high=self._update_interval_up_bound
+        )
+
+        self.information_list = []
+        for i in range(self._number):
+            self.information_list.append({
+                "type": self.types_of_information[i],
+                "data_size": self.data_size_of_information[i],
+                "update_interval": self.update_interval_of_information[i]
+            })
+        
+        self.mean_service_time_of_types, self.second_moment_service_time_of_types = \
+            self.compute_mean_and_second_moment_service_time_of_types(
+                vehicle_list=vehicle_list,
+                edge_node=edge_node,
+                additive_white_gaussian_noise=additive_white_gaussian_noise,
+                mean_channel_fadding_gain=mean_channel_fadding_gain,
+                second_channel_fadding_gain=second_channel_fadding_gain,
+                path_loss_exponent=path_loss_exponent
+            )
+
+
+    def get_information_list(self) -> list:
+        return self.information_list
+    
+    def set_information_list(self, information_list) -> None:
+        self.information_list = information_list
+    
+    def get_information_by_type(self, type: int) -> dict:
+        """method to get the information by type"""
+        for information in self.information_list:
+            if information["type"] == type:
+                return information
+        return None
+
+    def get_mean_service_time_of_types(self) -> np.array:
+        return self.mean_service_time_of_types
+    
+    def get_second_moment_service_time_of_types(self) -> np.array:
+        return self.second_moment_service_time_of_types
+
+    def get_mean_service_time_by_vehicle_and_type(self, vehicle_no, type):
+        return self.mean_service_time_of_types[vehicle_no][type]
+
+    def get_second_moment_service_time_by_vehicle_and_type(self, vehicle_no, type):
+        return self.second_moment_service_time_of_types[vehicle_no][type]
+
+    def compute_mean_and_second_moment_service_time_of_types(
+        self, 
+        vehicle_list: vehicleList,
+        edge_node: edge,
+        additive_white_gaussian_noise,
+        mean_channel_fadding_gain,
+        second_channel_fadding_gain,
+        path_loss_exponent):
+        """
+        method to get the mean and second moment service time of 
+        each type of information at each vehile.
+        Args:
+            vehicle_list: the vehicle list.
+            edge_node: the edge node.
+            additive_white_gaussian_noise: the additive white gaussian noise.
+            mean_channel_fadding_gain: the mean channel fadding gain.
+            second_channel_fadding_gain: the second channel fadding gain.
+            path_loss_exponent: the path loss exponent.
+        Returns:
+            the mean and second moment service time of each type of information.
+        """
+        vehicle_number = vehicle_list.get_vehicles_number()
+        mean_service_time_of_types = np.zeros(shape=(vehicle_number, self._data_types_number))
+        second_moment_service_time_of_types = np.zeros(shape=(vehicle_number, self._data_types_number))
+
+        white_gaussian_noise = v2iTransmission.cover_dBm_to_W(additive_white_gaussian_noise)
+
+        for vehicle_index in range(vehicle_number):
+            vehicle = vehicle_list.get_vehicle(vehicle_index)
+            for data_type_index in range(self._data_types_number):
+                transmission_time = []
+                infor = self.get_information_by_type(data_type_index)
+                for location in vehicle.get_vehicle_trajectory().get_locations():
+                    distance = location.get_distance(edge_node)
+                    channel_fading_gain = v2iTransmission.generate_channel_fading_gain(
+                        mean=mean_channel_fadding_gain,
+                        second_moment=second_channel_fadding_gain
+                    )
+                    SNR = (1 / white_gaussian_noise) * np.power(np.abs(channel_fading_gain), 2) * \
+                        (1 / np.power(distance, path_loss_exponent)) * \
+                        v2iTransmission.cover_mW_to_W(vehicle.get_transmission_power())
+                    bandwidth = edge.get_bandwidth() / vehicle_number
+                    transmission_time.append(infor["data_size"] / v2iTransmission.compute_transmission_rate(SNR, bandwidth))
+                
+                mean_service_time = np.array(transmission_time).mean()
+                second_moment_service_time = np.array(transmission_time).var()
+                mean_service_time_of_types[vehicle_index][data_type_index] = mean_service_time
+                second_moment_service_time_of_types[vehicle_index][data_type_index] = second_moment_service_time
+
+        return mean_service_time_of_types, second_moment_service_time_of_types    
