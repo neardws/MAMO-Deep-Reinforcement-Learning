@@ -1,6 +1,6 @@
-from dataStruct import informationList, vehicle
-from dataStruct import edge
-from dataStruct import vehicleAction
+from dataStruct import informationList
+from dataStruct import edge, edgeAction
+from dataStruct import vehicle, vehicleAction
 import pandas as pd
 import numpy as np
 import time
@@ -262,22 +262,46 @@ class vehicleTrajectoriesProcessor(object):
     def get_latitude_max(self) -> float:
         return self._latitude_max
 
+"""Called by two classes:"""
+def get_sensed_information_type(sensed_information_number, sensed_information, vehicle) -> np.array:
+        sensed_information_type = np.zeros((sensed_information_number,))
+        for i in sensed_information_number:
+            if sensed_information[i] == 1:
+                sensed_information_type[i] = vehicle.get_information_canbe_sensed()[i]
+        return sensed_information_type
 
 class sensingAndQueuing(object):
     # TODO: test the sensingAndQueuing class
     """This class is used to get the queue time of the edge with the highest queue length"""
     def __init__(self, vehicle: vehicle, vehicle_action: vehicleAction, information_list: informationList):
-        self._vehicle = vehicle
-        self._vehicle_action = vehicle_action
-        self._sensed_information = self._vehicle_action.get_sensed_information()
-        self._sensed_information_type = self.get_sensed_information_type()
+        
+        self._vehicle_no = vehicle.get_vehicle_no()
+        self._sensed_information_number = vehicle.get_max_information_number()
 
-    def get_sensed_information_type(self) -> np.array:
-        sensed_information_type = np.zeros((self._vehicle.get_max_information_number,))
-        for i in self._vehicle.get_max_information_number:
-            if self._sensed_information[i] == 1:
-                sensed_information_type[i] = self._vehicle.get_information_canbe_sensed()[i]
-        return sensed_information_type
+        self._action_time = vehicle_action.get_action_time()
+        self._sensed_information = vehicle_action.get_sensed_information()
+        self._sensing_frequencies = vehicle_action.get_sensing_frequencies()
+        self._uploading_priorities = vehicle_action.get_uploading_priorities()
+
+        self._sensed_information_type = get_sensed_information_type(
+            self._sensed_information_number, self._sensed_information, vehicle)
+
+        self._arrival_intervals = self.compute_interval_arrival_intervals()
+        self._arrival_moments = self.compute_arrival_moments(self._arrival_intervals)
+        self._updating_moments = self.compute_updating_moments(self._arrival_intervals, information_list)
+        self._queuing_times = self.compute_queuing_times(information_list)
+
+    def get_arrival_intervals(self) -> np.array:
+        return self._arrival_intervals
+
+    def get_arrival_moments(self) -> np.array:
+        return self._arrival_moments
+
+    def get_updating_moments(self) -> np.array:
+        return self._updating_moments
+
+    def get_queuing_times(self) -> np.array:
+        return self._queuing_times
 
     def compute_interval_arrival_intervals(self) -> np.array:
         """
@@ -285,15 +309,14 @@ class sensingAndQueuing(object):
         :return:
             arrival_intervals: a np.array of arrival intervals
         """
-        arrival_intervals = np.zeros((self._vehicle.get_max_information_number,))
-        sensing_frequencies = self._vehicle_action.get_sensing_frequencies()
-        for i in self._vehicle.get_max_information_number:
+        arrival_intervals = np.zeros((self._sensed_information_number,))
+        for i in self._sensed_information_number:
             if self.sensed_information[i] == 1:
-                sensing_frequency = sensing_frequencies[i]
+                sensing_frequency = self._sensing_frequencies[i]
                 arrival_intervals[i] = 1 / sensing_frequency
         return arrival_intervals
 
-    def compute_arrival_moments(self) -> np.array:
+    def compute_arrival_moments(self, arrival_intervals) -> np.array:
         """
         Compute the arrival moments of each information after the action is made
         the arrival moments are the moments when the information is sensed, 
@@ -302,15 +325,13 @@ class sensingAndQueuing(object):
             arrival_moments: a np.array of arrival moments
         """
         arrival_moments = np.zeros((self._vehicle.get_max_information_number,))
-        arrival_intervals = self.compute_interval_arrival_intervals()
-        sensing_frequencies = self._vehicle_action.get_sensing_frequencies()
-        for i in self._vehicle.get_max_information_number:
+        for i in self._sensed_information_number:
             if self._sensed_information[i] == 1:
                 arrival_moments[i] = \
-                    np.floor(self._vehicle_action.get_action_time * sensing_frequencies[i]) * arrival_intervals[i]
+                    np.floor(self._action_time * self._sensing_frequencies[i]) * arrival_intervals[i]
         return arrival_moments
 
-    def compute_updating_moments(self, information_list: informationList) -> np.array:
+    def compute_updating_moments(self, arrival_moments: np.array, information_list: informationList) -> np.array:
         """
         Compute the updating moments of each information after the action is made
         the updating moments are the moments when the information is updated, 
@@ -318,13 +339,12 @@ class sensingAndQueuing(object):
         :return:
             updating_moments: a np.array of updating moments
         """
-        updating_moments = np.zeros((self._vehicle.get_max_information_number,))
-        arrival_moments = self.compute_arrival_moments()        
-        updating_intervals = np.zeros((self._vehicle.get_max_information_number,))
-        for i in self._vehicle.get_max_information_number:
+        updating_moments = np.zeros((self._sensed_information_number,))
+        updating_intervals = np.zeros((self._sensed_information_number,))
+
+        for i in self._sensed_information_number:
             if self._sensed_information[i] == 1:
-                information : dict = information_list.get_information_by_type(self._sensed_information_type[i])
-                updating_intervals[i] = information["update_interval"]
+                updating_intervals[i] = information_list.get_information_update_interval_by_type(self._sensed_information_type[i])
                 updating_moments[i] = \
                     np.floor(arrival_moments[i] / updating_intervals[i]) * updating_intervals[i]
         return updating_moments
@@ -337,18 +357,16 @@ class sensingAndQueuing(object):
         :return:
             queuing_times: a np.array of queuing times
         """
-        queuing_times = np.zeros((self._vehicle.get_max_information_number,))
-        sensing_frequencies = self._vehicle_action.get_sensing_frequencies()
-        uploading_priorities = self._vehicle_action.get_uploading_priorities()
+        queuing_times = np.zeros((self._sensed_information_number,))
 
         """sort the actions by the uploading priority"""
         action_list = []
-        for i in self._vehicle.get_max_information_number:
+        for i in self._sensed_information_number:
             if self._sensed_information[i] == 1:
                 action_list.append({
                     "type": self._sensed_information_type[i],
-                    "sensing_frequency": sensing_frequencies[i],
-                    "uploading_priority": uploading_priorities[i]
+                    "sensing_frequency": self.sensing_frequencies[i],
+                    "uploading_priority": self.uploading_priorities[i]
                 })
         action_list.sort(key=lambda value: value["uploading_priority"], reverse=True)
         
@@ -357,16 +375,16 @@ class sensingAndQueuing(object):
             data_type = action["type"]
             sensing_frequency = action["sensing_frequency"]
             mean_service_time = informationList.get_mean_service_time_by_vehicle_and_type(
-                vehicle_no=self._vehicle.get_vehicle_no(), 
+                vehicle_no=self._vehicle_no, 
                 type=data_type
             )
             second_moment_service_time = informationList.get_second_moment_service_time_by_vehicle_and_type(
-                vehicle_no=self._vehicle.get_vehicle_no(),
+                vehicle_no=self._vehicle_no,
                 type=data_type
             )
             """if the information is in the head of queue, then the queuing time is 0"""
             if index == 0:
-                for i in self._vehicle.get_max_information_number:
+                for i in self._sensed_information_number:
                     if self._sensed_information_type[i] == data_type:
                         queuing_times[i] = 0
                 continue
@@ -377,12 +395,12 @@ class sensingAndQueuing(object):
             for i in range(index):
                 workload += action_list[i]["sensing_frequency"] * \
                     informationList.get_mean_service_time_by_vehicle_and_type(
-                        vehicle_no=self._vehicle.get_vehicle_no(), 
+                        vehicle_no=self._vehicle_no, 
                         type=action_list[i]["type"]
                     )
                 tau += action_list[i]["sensing_frequency"] * \
                     information_list.get_second_moment_service_time_by_vehicle_and_type(
-                        vehicle_no=self._vehicle.get_vehicle_no(),
+                        vehicle_no=self._vehicle_no,
                         type=action_list[i]["type"]
                     )
             workload += sensing_frequency * mean_service_time
@@ -392,7 +410,7 @@ class sensingAndQueuing(object):
             queuing_time = (1 / (1 - workload + sensing_frequency * mean_service_time)) * \
                 (mean_service_time + tau / (2 * (1 - workload))) - mean_service_time
 
-            for i in self._vehicle.get_max_information_number:
+            for i in self._sensed_information_number:
                 if self._sensed_information_type[i] == data_type:
                     queuing_times[i] = queuing_time
 
@@ -404,10 +422,87 @@ class v2iTransmission(object):
     """
     This class is used to define the transmission of a vehicle to an edge.
     """
-    def __init__(self, vehicle, intersection, time_to_arrival):
-        self.vehicle = vehicle
-        self.intersection = intersection
-        self.time_to_arrival = time_to_arrival
+    def __init__(
+        self, 
+        vehicle: vehicle, 
+        vehicle_action: vehicleAction, 
+        edge: edge, 
+        edge_action: edgeAction,
+        arrival_moments: np.array, 
+        queuing_times: np.array,
+        white_gaussian_noise: int,
+        mean_channel_fadding_gain: float,
+        second_moment_channel_fadding_gain: float,
+        path_loss_exponent: int
+        ):
+        self._vehicle_no = vehicle.get_vehicle_no()
+        self._vehicle_trajectory = vehicle.get_vehicle_trajectory()
+        self._transmission_power = vehicle_action.get_transmission_power()
+        self._edge_location = edge.get_edge_location()
+        self._sensed_information_number = vehicle.get_max_information_number()
+        self._sensed_information = vehicle_action.get_sensed_information()
+        
+        self._sensed_information_type = get_sensed_information_type(
+            self._sensed_information_number, self._sensed_information, vehicle)
+
+        self._bandwdith_allocation = edge_action.get_bandwidth_allocation()
+
+        self._arrival_moments = arrival_moments
+        self._queuing_times = queuing_times
+        self._white_gaussian_noise = white_gaussian_noise
+        self._mean_channel_fadding_gain = mean_channel_fadding_gain
+        self._second_moment_channel_fadding_gain = second_moment_channel_fadding_gain
+        self._path_loss_exponent = path_loss_exponent
+
+        self._transmission_times = self.compute_transmission_times()
+
+    def compute_transmission_times(self) -> np.array:
+        """
+        Compute the transmission time of the vehicle to the edge
+        :return:
+            transmission_time: the transmission time of the vehicle to the edge
+        """
+        transmission_times = np.zeros((self._sensed_information_number,))
+        """compute the transmission time"""
+        for i in range(self._sensed_information_number):
+            if self._sensed_information[i] == 1:
+                start_time = np.floor(self._arrival_moments[i] + self._queuing_times[i])
+                vehicle_loaction = self._vehicle_trajectory.get_location_by_time(start_time)
+                distance = vehicle_loaction.get_distance(self._edge_location)
+                SNR = v2iTransmission.compute_SNR(
+                    white_gaussian_noise=self._white_gaussian_noise, 
+                    channel_fadding_gain=self.generate_channel_fading_gain(),
+                    distance=distance,
+                    path_loss_exponent=self._path_loss_exponent,
+                    transmission_power=self._transmission_power
+                )
+                tranmission_rate = v2iTransmission.compute_transmission_rate(
+                    SNR, self._bandwdith_allocation[self._vehicle_no])
+                transmission_times[i] = informationList.get_information_siez_by_type(self._sensed_information_type[i]) / tranmission_rate
+        return transmission_times
+
+    @staticmethod
+    def compute_SNR(
+        white_gaussian_noise: int,
+        channel_fading_gain: float,
+        distance: float,
+        path_loss_exponent: int,
+        transmission_power: float) -> float:
+        """
+        Compute the SNR of a vehicle transmission
+        Args:
+            white_gaussian_noise: the white gaussian noise of the channel, e.g., -70 dBm
+            channel_fading_gain: the channel fading gain, e.g., Gaussion distribution with mean 2 and variance 0.4
+            distance: the distance between the vehicle and the edge, e.g., 300 meters
+            path_loss_exponent: the path loss exponent, e.g., 3
+            transmission_power: the transmission power of the vehicle, e.g., 10 mW
+        Returns:
+            SNR: the SNR of the transmission
+        """
+        return (1.0 / v2iTransmission.cover_dBm_to_W(white_gaussian_noise)) * \
+            np.power(np.abs(channel_fading_gain), 2) * \
+            1.0 / (np.power(distance, path_loss_exponent)) * \
+            v2iTransmission.cover_mW_to_W(transmission_power)
 
     @staticmethod
     def compute_transmission_rate(SNR, bandwidth):
@@ -417,6 +512,23 @@ class v2iTransmission(object):
         :return: transmission rate measure by Byte/s
         """
         return int(v2iTransmission.cover_MHz_to_Hz(bandwidth) * np.log2(1 + SNR) / 8)
+
+    def generate_channel_fadding_gain(self):
+        """
+        Generate the channel fading gain
+        :return:
+            channel_fading_gain: the channel fading gain
+        """
+        channel_fading_gain = np.random.normal(
+            loc=self._mean_channel_fadding_gain,
+            scale=self._second_moment_channel_fadding_gain
+        )
+        return channel_fading_gain
+
+    @staticmethod
+    def generate_channel_fading_gain(mean, second_moment):
+        channel_fading_gain = np.random.normal(loc=mean, scale=second_moment)
+        return channel_fading_gain
 
     @staticmethod
     def cover_MHz_to_Hz(MHz):
@@ -445,11 +557,6 @@ class v2iTransmission(object):
     @staticmethod
     def cover_mW_to_W(mW):
         return mW / 1000
-
-    @staticmethod
-    def generate_channel_fading_gain(mean, second_moment):
-        channel_fading_gain = np.random.normal(loc=mean, scale=second_moment)
-        return channel_fading_gain
 
 
 if __name__ == '__main__':

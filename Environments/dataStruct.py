@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from Envrionments.utilities import v2iTransmission
+from Environments.utilities import v2iTransmission
 # from utilities import v2iTransmission
 
 class timeSlots(object):
@@ -18,15 +18,27 @@ class timeSlots(object):
             slot_length: the length of each time slot"""   
         self.start = start
         self.end = end
+        self.now = self.start
         self.slot_length = slot_length
         self._number = int((end - start + 1) / slot_length)
     
+    def add_time(self) -> None:
+        """method to add time to the system"""
+        self.now += 1
+
+    def is_end(self) -> bool:
+        """method to check if the system is at the end of the time slots"""
+        return self.now > self.end
+
     def get_slot_length(self):
         """method to get the length of each time slot"""
         return self.slot_length
 
     def get_number(self) -> int:
         return self._number
+
+    def now(self) -> int:
+        return self.now
 
 
 class information(object):
@@ -328,6 +340,9 @@ class vehicleList(object):
     def get_vehicles_number(self) -> int:
         return self._vehicles_number
 
+    def get_max_information_number(self) -> int:
+        return self._max_information_number
+
     def get_vehicle(self, vehicle_no: int) -> vehicle:
         return self._vehicle_list[vehicle_no]
 
@@ -515,6 +530,51 @@ class edge(object):
     
     def set_bandwidth(self, bandwidth: float) -> None:
         self._bandwidth = bandwidth
+
+class edgeAction(object):
+    """ the action of the edge. """
+    def __init__(
+        self, 
+        edge: edge,
+        now_time: int,
+        vehicle_number: int,
+        action_time: int) -> None:
+        """ initialize the edge action.
+        Args:
+            edge: the edge.
+            now_time: the current time.
+            vehicle_number: the number of vehicles.
+            action_time: the time of the action.
+        """
+        self._edge = edge
+        self._now_time = now_time
+        self._vehicle_number = vehicle_number
+        self._action_time = action_time
+        self._bandwidth_allocation = np.zeros((self._vehicle_number,))
+
+    def get_bandwidth_allocation(self) -> np.array:
+        return self._bandwidth_allocation
+
+    def get_the_sum_of_bandwidth_allocation(self) -> float:
+        return np.sum(self._bandwidth_allocation)
+
+    def check_action(self, nowTimeSlot: int) -> bool:
+        """ check the action.
+        Args:
+            nowTimeSlot: the time of the action.
+        Returns:
+            True if the action is valid.
+        """
+        if self._action_time != nowTimeSlot:
+            return False
+        if self._vehicle_number != len(self._bandwidth_allocation):
+            return False
+        if self._edge.get_bandwidth() < self.get_the_sum_of_bandwidth_allocation():
+            return False
+        return True
+
+    
+
 
 class applicationList(object):
     """
@@ -706,11 +766,30 @@ class informationList(object):
     def set_information_list(self, information_list) -> None:
         self.information_list = information_list
     
+    def get_information_type_by_index(self, index: int) -> int:
+        if index >= self._number:
+            raise ValueError("The index is out of range.")
+        return self.information_list[index]["type"]
+
     def get_information_by_type(self, type: int) -> dict:
         """method to get the information by type"""
         for information in self.information_list:
             if information["type"] == type:
                 return information
+        return None
+
+    def get_information_siez_by_type(self, type: int) -> float:
+        """method to get the information size by type"""
+        for information in self.information_list:
+            if information["type"] == type:
+                return information["data_size"]
+        return None
+
+    def get_information_update_interval_by_type(self, type: int) -> int:
+        """method to get the information update interval by type"""
+        for information in self.information_list:
+            if information["type"] == type:
+                return information["update_interval"]
         return None
 
     def get_mean_service_time_of_types(self) -> np.array:
@@ -756,22 +835,234 @@ class informationList(object):
             vehicle = vehicle_list.get_vehicle(vehicle_index)
             for data_type_index in range(self._data_types_number):
                 transmission_time = []
-                infor = self.get_information_by_type(data_type_index)
                 for location in vehicle.get_vehicle_trajectory().get_locations():
-                    distance = location.get_distance(edge_node)
+                    distance = location.get_distance(edge_node.get_edge_location())
                     channel_fading_gain = v2iTransmission.generate_channel_fading_gain(
                         mean=mean_channel_fadding_gain,
                         second_moment=second_channel_fadding_gain
                     )
-                    SNR = (1 / white_gaussian_noise) * np.power(np.abs(channel_fading_gain), 2) * \
-                        (1 / np.power(distance, path_loss_exponent)) * \
-                        v2iTransmission.cover_mW_to_W(vehicle.get_transmission_power())
-                    bandwidth = edge.get_bandwidth() / vehicle_number
-                    transmission_time.append(infor["data_size"] / v2iTransmission.compute_transmission_rate(SNR, bandwidth))
+                    SNR = v2iTransmission.compute_SNR(
+                        white_gaussian_noise=white_gaussian_noise,
+                        channel_fading_gain=channel_fading_gain,
+                        distance=distance,
+                        path_loss_exponent=path_loss_exponent,
+                        transmission_power=vehicle.get_transmission_power()
+                    )
+                    bandwidth = edge_node.get_bandwidth() / vehicle_number
+                    transmission_time.append(self.get_information_siez_by_type(data_type_index) / v2iTransmission.compute_transmission_rate(SNR, bandwidth))
                 
                 mean_service_time = np.array(transmission_time).mean()
                 second_moment_service_time = np.array(transmission_time).var()
                 mean_service_time_of_types[vehicle_index][data_type_index] = mean_service_time
                 second_moment_service_time_of_types[vehicle_index][data_type_index] = second_moment_service_time
 
-        return mean_service_time_of_types, second_moment_service_time_of_types    
+        return mean_service_time_of_types, second_moment_service_time_of_types
+
+
+class informationRequirements(object):
+    """
+    This class is used to store the data requirements of the environment.
+    """
+    def __init__(
+        self,
+        time_slots: timeSlots,
+        max_application_number: int,
+        min_application_number: int,
+        application: applicationList,
+        view: viewList,
+        information: informationList,
+        seed: int
+        ) -> None:
+        """ initialize the information set.
+        Args:
+            time_slots: the time slots.
+            max_application_number: the maximum application number at each timestampe.
+            min_application_number: the minimum application number at each timestampe.
+            application: the application list.
+            view: the view list.
+            information: the information set.
+            seed: the random seed.
+        """
+        self._max_timestampes = time_slots.get_number()     #  max_timestampes: the maximum timestamp.
+        self._max_application_number = max_application_number
+        self._min_application_number = min_application_number
+        self._application_number = application.get_number()
+        self._application_list = application.get_application_list()
+        self._view_list = view.get_view_list()
+        self._information_list = information.get_information_list()
+        self._seed = seed
+
+        self.applications_at_time = self.applications_at_times()
+        
+
+    def get_seed(self) -> int:
+        """ get the random seed.
+        Returns:
+            the random seed.
+        """
+        return self._seed
+    
+    def applications_at_times(self) -> list:
+        """ get the applications at each time.
+        Returns:
+            the applications at times.
+        """
+        random_application_number = np.random.randint(
+            low=self._min_application_number, 
+            high=self._max_application_number, 
+            size=self._max_timestampes
+        )
+
+        applications_at_times = []
+        for _ in range(self._max_timestampes):
+            applications_at_times.append(
+                list(np.random.choice(
+                    list(range(self._application_number)), 
+                    random_application_number[_], 
+                    replace=False))
+            )
+
+        return applications_at_times
+    
+    def applications_at_now(self, nowTimeStamp: int) -> list:
+        """ get the applications now.
+        Args:
+            nowTimeStamp: the current timestamp.
+        Returns:
+            the applications list.
+        """
+        if self.applications_at_time is None:
+            return Exception("applications_at_time is None.")
+        return self.applications_at_time[nowTimeStamp]
+
+    def views_required_by_application_at_now(self, nowTimeStamp: int) -> list:
+        """ get the views required by application now.
+        Args:
+            nowTimeStamp: the current timestamp.
+        Returns:
+            the views required by application list.
+        """
+        applications_at_now = self.applications_at_now(nowTimeStamp)
+        views_required_by_application_at_now = []
+        for _ in applications_at_now:
+            views_required_by_application_at_now.append(
+                self._application_list[_]
+            )
+        return views_required_by_application_at_now
+    
+    def information_required_by_views_at_now(self, nowTimeStamp: int) -> list:
+        """ get the information required by views now.
+        Args:
+            nowTimeStamp: the current timestamp.
+        Returns:
+            the information set required by views list.
+        """
+        views_required_by_application_at_now = self.views_required_by_application_at_now(nowTimeStamp)
+        information_type_required_by_views_at_now = set()
+
+        for _ in views_required_by_application_at_now:
+            view_list = self._view_list[_]
+            for __ in view_list:
+                information_type_required_by_views_at_now.add(
+                    self._information_list[__]["type"]
+                )
+
+        information_required_by_views_at_now = []
+        for _ in information_type_required_by_views_at_now:
+            for __ in self._information_list:
+                if __["type"] == _:
+                    information_required_by_views_at_now.append(__)
+
+        return information_required_by_views_at_now
+
+
+if __name__ == "__main__":
+    application = applicationList(
+        application_number=10,
+        view_number=10,
+        views_per_application=1,
+        seed=1
+    )
+    print("application:\n", application.get_application_list())
+
+    information_list = informationList(
+        information_number=10, 
+        seed=0, 
+        data_size_low_bound=0, 
+        data_size_up_bound=1, 
+        data_types_number=3, 
+        update_interval_low_bound=1, 
+        update_interval_up_bound=3
+    )
+    print("information_list:\n", information_list.get_information_list())
+
+    view = viewList(
+        view_number=10,
+        information_number=10,
+        max_information_number=3,
+        seeds=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    )
+    print("views:\n", view.get_view_list())
+
+    information_required = informationRequirements(
+        max_timestampes=10,
+        max_application_number=10,
+        min_application_number=1,
+        application=application,
+        view=view,
+        information=information_list,
+        seed=0
+    )
+    print(information_required.applications_at_time)
+    nowTimeStamp = 0
+    print(information_required.applications_at_now(nowTimeStamp))
+    print(information_required.views_required_by_application_at_now(nowTimeStamp))
+    print(information_required.information_required_by_views_at_now(nowTimeStamp))
+
+    """Print the result."""
+    """
+    application:
+    [2, 9, 6, 4, 0, 3, 1, 7, 8, 5]
+
+    information_list:
+    [{'type': 2, 'data_size': 0.5488135039273248, 'update_interval': 1}, 
+    {'type': 8, 'data_size': 0.7151893663724195, 'update_interval': 2}, 
+    {'type': 4, 'data_size': 0.6027633760716439, 'update_interval': 2}, 
+    {'type': 9, 'data_size': 0.5448831829968969, 'update_interval': 1}, 
+    {'type': 1, 'data_size': 0.4236547993389047, 'update_interval': 2}, 
+    {'type': 6, 'data_size': 0.6458941130666561, 'update_interval': 2}, 
+    {'type': 7, 'data_size': 0.4375872112626925, 'update_interval': 2}, 
+    {'type': 3, 'data_size': 0.8917730007820798, 'update_interval': 2}, 
+    {'type': 0, 'data_size': 0.9636627605010293, 'update_interval': 2}, 
+    {'type': 5, 'data_size': 0.3834415188257777, 'update_interval': 2}]
+
+    views:
+    [
+    [2, 9], 
+    [4, 1], 
+    [5], 
+    [3], 
+    [9, 5], 
+    [8, 1], 
+    [8, 5], 
+    [8, 6], 
+    [8, 4], 
+    [8]]
+
+    [[7], 
+    [0, 4], 
+    [0, 5, 9, 2, 3, 4, 8, 7, 1], 
+    [5], 
+    [5, 4, 7, 9, 1, 3, 8, 6, 0], 
+    [1, 2, 7, 3, 6, 5, 9], 
+    [7, 4, 1, 3, 8], 
+    [1, 7, 8, 4], 
+    [5], 
+    [3, 8, 6, 4, 7]]
+
+    [7]
+
+    [7]
+
+    [{'type': 0, 'data_size': 0.9636627605010293, 'update_interval': 2}, {'type': 7, 'data_size': 0.4375872112626925, 'update_interval': 2}]
+    """
