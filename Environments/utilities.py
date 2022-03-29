@@ -482,6 +482,91 @@ class v2iTransmission(object):
         return transmission_times
 
     @staticmethod
+    def get_minimum_transmission_power(
+        white_gaussian_noise: int,
+        mean_channel_fading_gain: float,
+        second_moment_channel_fadding_gain: float,
+        distance: float,
+        path_loss_exponent: int,
+        transmission_power: float,
+        SNR_target: float,
+        probabiliity_threshold: float) -> float:
+        """
+        Get the minimum transmission power of the vehicle to the edge
+        Args:
+            white_gaussian_noise: the white gaussian noise of the channel
+            mean_channel_fading_gain: the mean channel fading gain
+            second_moment_channel_fadding_gain: the second moment channel fading gain
+            distance: the distance between the vehicle and the edge
+            path_loss_exponent: the path loss exponent
+            transmission_power: the transmission power of the vehicle
+            SNR_target: the target SNR
+            probabiliity_threshold: the probability threshold
+        Returns:
+            minimum_transmission_power: the minimum transmission power of the vehicle to the edge
+        """
+
+        minimum_transmission_power = transmission_power
+        channel_fading_gains = v2iTransmission.generate_channel_fading_gain(
+            white_gaussian_noise=white_gaussian_noise,
+            mean_channel_fading_gain=mean_channel_fading_gain,
+            second_moment_channel_fadding_gain=second_moment_channel_fadding_gain,
+            distance=distance,
+            path_loss_exponent=path_loss_exponent,
+            size=100
+        )
+        while True:
+            probabiliity = v2iTransmission.compute_successful_tansmission_probability(
+                white_gaussian_noise=white_gaussian_noise,
+                channel_fading_gains=channel_fading_gains,
+                distance=distance,
+                path_loss_exponent=path_loss_exponent,
+                transmission_power=minimum_transmission_power,
+                SNR_target=SNR_target
+            )
+            if probabiliity <= probabiliity_threshold:
+                break
+            else:
+                minimum_transmission_power -= minimum_transmission_power * 0.01
+
+        return minimum_transmission_power
+        
+    @staticmethod
+    def compute_successful_tansmission_probability(
+        white_gaussian_noise: int,
+        channel_fading_gains: np.array,
+        distance: float,
+        path_loss_exponent: int,
+        transmission_power: float,
+        SNR_target: float) -> float:
+        """
+        Compute the sussessful transmission probability of the vehicle to the edge
+        Args:
+            white_gaussian_noise: the white gaussian noise of the channel
+            channel_fading_gains: the channel fading gains
+            distance: the distance between the vehicle and the edge
+            path_loss_exponent: the path loss exponent
+            transmission_power: the transmission power of the vehicle
+            SNR_target: the target SNR
+        Returns:
+            sussessful_tansmission_probability: the sussessful transmission probability of the vehicle to the edge
+        """
+        successful_transmission_number = 0
+        total_number = 0
+        for channel_fading_gain in channel_fading_gains:
+            total_number += 1
+            SNR = v2iTransmission.compute_SNR(
+                white_gaussian_noise=white_gaussian_noise,
+                channel_fadding_gain=channel_fading_gain,
+                distance=distance,
+                path_loss_exponent=path_loss_exponent,
+                transmission_power=transmission_power
+            )
+            if SNR >= SNR_target:
+                successful_transmission_number += 1
+        return successful_transmission_number / total_number
+
+    @staticmethod
     def compute_SNR(
         white_gaussian_noise: int,
         channel_fading_gain: float,
@@ -526,8 +611,8 @@ class v2iTransmission(object):
         return channel_fading_gain
 
     @staticmethod
-    def generate_channel_fading_gain(mean, second_moment):
-        channel_fading_gain = np.random.normal(loc=mean, scale=second_moment)
+    def generate_channel_fading_gain(mean, second_moment, size: int = 1):
+        channel_fading_gain = np.random.normal(loc=mean, scale=second_moment, size=size)
         return channel_fading_gain
 
     @staticmethod

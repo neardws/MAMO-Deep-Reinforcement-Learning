@@ -403,12 +403,11 @@ class vehicleAction(object):
         self, 
         vehicle_no: int,
         now_time: int,
-        vehicle_list: vehicleList,
-        sensed_information: list,
-        sensing_frequencies: list,
-        uploading_priorities: list,
-        transmission_power: float, 
-        action_time: int) -> None:
+        sensed_information: list = None,
+        sensing_frequencies: list = None,
+        uploading_priorities: list = None,
+        transmission_power: float = None, 
+        action_time: int = None) -> None:
         """ initialize the vehicle action.
         Args:
             vehicle_no: the index of vehicle. e.g. 0, 1, 2, ...
@@ -430,8 +429,8 @@ class vehicleAction(object):
         self._transmission_power = transmission_power
         self._action_time = action_time
 
-        if not self.check_action(now_time, vehicle_list):
-            raise ValueError("The action is not valid.")
+        # if not self.check_action(now_time, vehicle_list):
+        #     raise ValueError("The action is not valid.")
 
     def check_action(self, nowTimeSlot: int, vehicleList: vehicleList) -> bool:
         """ check the action.
@@ -468,22 +467,78 @@ class vehicleAction(object):
         return self._action_time
 
     @staticmethod
-    def generate_from_neural_network_output(network_output: Any):
+    def generate_from_np_array(
+        now_time: int,
+        vehicle_no: int,
+        vehicle_list: vehicleList,
+        max_information_number: int,
+        network_output: np.array,
+        white_gaussian_noise: int,
+        mean_channel_fading_gain: float,
+        second_moment_channel_fadding_gain: float,
+        edge_location: location,
+        path_loss_exponent: int,
+        SNR_target: float,
+        probabiliity_threshold: float):
         """ generate the vehicle action from the neural network output.
+
+        self._vehicle_action_size = self._max_information_number + self._max_information_number + \
+            self._max_information_number + 1
+            # sensed_information + sensing_frequencies + uploading_priorities + transmission_power
+
         Args:
             network_output: the output of the neural network.
         Returns:
             the vehicle action.
         """
-        # TODO: implement this function to generate_from_neural_network_output.
-        return vehicleAction(
-            vehicle_no=network_output[0],
-            sensed_information_types=network_output[1],
-            sensing_frequencies=network_output[2],
-            uploading_priorities=network_output[3],
-            transmission_power=network_output[4],
-            action_time=network_output[5]
+        sensed_information = np.zeros(shape=(max_information_number,))
+        sensing_frequencies = np.zeros(shape=(max_information_number,))
+        uploading_priorities = np.zeros(shape=(max_information_number,))
+
+        for index, values in enumerate(network_output[:max_information_number]):
+            if values > 0.5:
+                sensed_information[index] = 1
+        for index, values in enumerate(network_output[max_information_number: 2*max_information_number]):
+            if sensed_information[index] == 1:
+                sensing_frequencies[index] = values
+        for index, values in enumerate(network_output[2*max_information_number: 3*max_information_number]):
+            if sensed_information[index] == 1:
+                uploading_priorities[index] = values
+
+        sensed_information = list(sensed_information)
+        sensing_frequencies = list(sensing_frequencies)
+        uploading_priorities = list(uploading_priorities)
+
+        minimum_transmission_power = v2iTransmission.get_minimum_transmission_power(
+            white_gaussian_noise=white_gaussian_noise,
+            mean_channel_fading_gain=mean_channel_fading_gain,
+            second_moment_channel_fadding_gain=second_moment_channel_fadding_gain,
+            distance=vehicle_list.get_vehicle(vehicle_no).get_vehicle_location(now_time).get_distance(edge_location),
+            path_loss_exponent=path_loss_exponent,
+            transmission_power=vehicle_list.get_vehicle(vehicle_no).get_transmission_power(),
+            SNR_target=SNR_target,
+            probabiliity_threshold=probabiliity_threshold
         )
+
+        transmisson_power = minimum_transmission_power + network_output[-1] * \
+            (vehicle_list.get_vehicle(vehicle_no).get_transmission_power() - minimum_transmission_power)
+        
+        vehicle_action = vehicleAction(
+            vehicle_no=vehicle_no,
+            now_time=now_time,
+
+            sensed_information_types=sensed_information,
+            sensing_frequencies=sensing_frequencies,
+            uploading_priorities=uploading_priorities,
+            transmission_power=transmisson_power,
+
+            action_time=now_time
+        )
+
+        if not vehicle_action.check_action(now_time, vehicle_list):
+            raise ValueError("The vehicle action is not valid.")
+
+        return vehicle_action
 
 
 class edge(object):
@@ -538,6 +593,7 @@ class edgeAction(object):
         edge: edge,
         now_time: int,
         vehicle_number: int,
+        bandwidth_allocation: np.array,
         action_time: int) -> None:
         """ initialize the edge action.
         Args:
@@ -546,11 +602,11 @@ class edgeAction(object):
             vehicle_number: the number of vehicles.
             action_time: the time of the action.
         """
-        self._edge = edge
+        self._edge_bandwidth = edge.get_bandwidth()
         self._now_time = now_time
         self._vehicle_number = vehicle_number
         self._action_time = action_time
-        self._bandwidth_allocation = np.zeros((self._vehicle_number,))
+        self._bandwidth_allocation = bandwidth_allocation
 
     def get_bandwidth_allocation(self) -> np.array:
         return self._bandwidth_allocation
@@ -569,11 +625,39 @@ class edgeAction(object):
             return False
         if self._vehicle_number != len(self._bandwidth_allocation):
             return False
-        if self._edge.get_bandwidth() < self.get_the_sum_of_bandwidth_allocation():
+        if self._edge_bandwidth < self.get_the_sum_of_bandwidth_allocation():
             return False
         return True
 
-    
+    @staticmethod
+    def generate_from_np_array(
+        now_time: int,
+        edge_node: edge,
+        action_time: int,
+        network_output: np.array,
+        vehicle_number: int):
+        """ generate the edge action from the neural network output.
+        Args:
+            network_output: the output of the neural network.
+        Returns:
+            the edge action.
+        """
+        bandwidth_allocation = np.zeros((vehicle_number,))
+        for index, values in enumerate(network_output):
+            bandwidth_allocation[index] = values * edge_node.get_bandwidth()
+
+        edge_action = edgeAction(
+            edge=edge_node,
+            now_time=now_time,
+            vehicle_number=vehicle_number,
+            bandwidth_allocation=bandwidth_allocation,
+            action_time=action_time
+        )
+
+        if not edge_action.check_action(now_time):
+            raise ValueError("the edge action is invalid.")
+
+        return edge_action
 
 
 class applicationList(object):

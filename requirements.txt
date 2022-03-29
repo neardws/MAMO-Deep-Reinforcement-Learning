@@ -1,3 +1,19 @@
-acme.hello==0.1
-dm_env==1.5
+# update
+# pipreqs . --force      
+absl_py==1.0.0
+dm-acme==0.4.0
+dm-env==1.5
+dm_tree==0.1.6
+dm-launchpad==0.5.0
+dm-reverb==0.7.0
+dm-sonnet==2.0.0
 numpy==1.22.3
+pandas==1.4.1
+tensorflow==2.8.0
+tensorflow-probability==0.16.0
+tree==0.2.4
+scipy==1.8.0
+jax==0.3.4
+jaxlib==0.3.2
+gym==0.23.1
+trfl==1.2.0

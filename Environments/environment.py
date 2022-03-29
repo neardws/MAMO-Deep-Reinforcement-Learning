@@ -43,11 +43,24 @@ class vehicularNetworkEnv(dm_env.Environment):
             self._max_information_number + 1
             # sensed_information + sensing_frequencies + uploading_priorities + transmission_power
         self._vehicle_action_shpae = (self._vehicle_action_size,)
-        
         self._edge_action_size = self._vehicle_number
 
         self._action_size = self._vehicle_action_size * self._vehicle_number + self._edge_action_size
         self._action_shpae = (self._action_size,)
+
+        self._vehicle_observation_size = 1 + 1 + 1 + self._max_information_number + self._max_information_number + \
+            self._information_number + self._information_number 
+            # now_time_slot + vehicle_index + distance + information_canbe_sensed + sensing_cost_of_information + \
+            # information_in_edge + information_requried
+
+        self._vehicle_observation_shape = (self._vehicle_observation_size,)
+
+        self._observation_size = 1 + self._vehicle_number + self._max_information_number * 2 * self._vehicle_number + \
+            self._information_number + self._information_number
+            # now_time_slot + vehicle distances + information_canbe_senseds + sensing_cost_of_informations +  \
+            # information_in_edge + information_requried
+
+        self._observation_shape = (self._observation_size,)
 
         self._reset_next_step = True
 
@@ -72,7 +85,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         if self._reset_next_step:
             return self.reset()
         # do actions
-
+        
         # check for termination
         if self.done:
             self._reset_next_step = True
@@ -82,13 +95,11 @@ class vehicularNetworkEnv(dm_env.Environment):
     """Define the observation spaces of vehicle."""
     def vehicle_observation_spec(self) -> specs.BoundedArray:
         """Define and return the observation space."""
-        vehicle_observation_number = 
-        vehicle_observation_shape = (4,)
         return specs.BoundedArray(
-            shape=(4,),
-            dtype=np.float32,
-            minimum=np.array([0, 0, 0, 0]),
-            maximum=np.array([1, 1, 1, 1]),
+            shape=self._vehicle_observation_shape,
+            dtype=np.float,
+            minimum=np.zeros(self._vehicle_observation_shape),
+            maximum=np.ones(self._vehicle_observation_shape)
         )
 
     """Define the action spaces of vehicle."""
@@ -96,7 +107,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         """Define and return the action space."""
         return specs.BoundedArray(
             shape=self.vehicle_action_shpae,
-            dtype=np.float32,
+            dtype=np.float,
             minimum=np.zeros(self.vehicle_action_shpae),
             maximum=np.ones(self.vehicle_action_shpae)
         )
@@ -105,10 +116,10 @@ class vehicularNetworkEnv(dm_env.Environment):
     def observation_spec(self) -> specs.BoundedArray:
         """Define and return the observation space."""
         return specs.BoundedArray(
-            shape=(4,),
-            dtype=np.float32,
-            minimum=np.array([0, 0, 0, 0]),
-            maximum=np.array([1, 1, 1, 1]),
+            shape=self._observation_shape,
+            dtype=np.float,
+            minimum=np.zeros(self._observation_shape),
+            maximum=np.ones(self._observation_shape)
         )
     
     """Define the gloabl action spaces."""
@@ -116,7 +127,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         """Define and return the action space."""
         return specs.BoundedArray(
             shape=self._action_shpae,
-            dtype=np.float32,
+            dtype=np.float,
             minimum=np.zeros(self._action_shpae),
             maximum=np.ones(self._action_shpae)
         )
@@ -126,3 +137,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         # TODO: implement
         return self.state
     
+
+    def _vehicle_observation(self) -> np.ndarray:
+        """Return the observation of the environment at each vehicle."""
+        pass
