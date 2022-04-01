@@ -40,6 +40,9 @@ class timeSlots(object):
     def now(self) -> int:
         return self.now
 
+    def reset(self) -> None:
+        self.now = self.start
+
 
 class information(object):
     """
@@ -52,7 +55,7 @@ class information(object):
         type: int,
         vehicle_no: int,
         edge_no: int = -1,
-        generation_time: float = -1,
+        updating_moment: float = -1,
         inter_arrival_interval: float = -1,
         arrival_moment: float = -1,
         queuing_time: float = -1,
@@ -63,7 +66,7 @@ class information(object):
             type: the type of the information.
             vehicle_no: the index of the vehicle.
             edge_no: the index of the edge.
-            generation_time: the generation time of the information.
+            updating_moment: the generation time of the information.
             inter_arrival_interval: the inter-arrival interval of the information.
             arrival_moment: the arrival moment of the information.
             queuing_time: the queuing time of the information.
@@ -73,7 +76,7 @@ class information(object):
         self._type = type
         self._vehicle_no = vehicle_no
         self._edge_no = edge_no
-        self._generation_time = generation_time
+        self._updating_moment = updating_moment
         self._inter_arrival_interval = inter_arrival_interval
         self._arrival_moment = arrival_moment
         self._queuing_time = queuing_time
@@ -98,11 +101,11 @@ class information(object):
     def set_edge_no(self, edge_no: int) -> None:
         self._edge_no = edge_no
     
-    def get_generation_time(self) -> float:
-        return self._generation_time
+    def get_updating_moment(self) -> float:
+        return self._updating_moment
     
-    def set_generation_time(self, generation_time: float) -> None:
-        self._generation_time = generation_time
+    def set_updating_moments(self, updating_moment: float) -> None:
+        self._updating_moment = updating_moment
 
     def get_inter_arrival_interval(self) -> float:
         return self._inter_arrival_interval
@@ -202,7 +205,7 @@ class vehicle(object):
         vehicle_no: int,
         vehicle_trajectory: trajectory,
         information_number: int,
-        max_information_number: int,
+        sened_information_number: int,
         min_sensing_cost: float,
         max_sensing_cost: float,
         transmission_power: float,
@@ -212,7 +215,7 @@ class vehicle(object):
             vehicle_no: the index of vehicle. e.g. 0, 1, 2, ...
             vehicle_trajectory: the trajectory of the vehicle.
             information_number: the number of information list.
-            max_information_number: the maximum number of information, which can be sensed by the vehicle.
+            sened_information_number: the maximum number of information, which can be sensed by the vehicle.
             min_sensing_cost: the minimum sensing cost.
             max_sensing_cost: the maximum sensing cost.
             transmission_power: the transmission power.
@@ -221,18 +224,18 @@ class vehicle(object):
         self._vehicle_no = vehicle_no
         self._vehicle_trajectory = vehicle_trajectory
         self._information_number = information_number
-        self._max_information_number = max_information_number
+        self._sensed_information_number = sened_information_number
         self._min_sensing_cost = min_sensing_cost
         self._max_sensing_cost = max_sensing_cost
         self._transmission_power = transmission_power
         self._seed = seed
 
-        if self._max_information_number > self._information_number:
+        if self._sensed_information_number > self._information_number:
             raise ValueError("The max information number must be less than the information number.")
         
-        self.information_canbe_sensed = self.information_types_can_be_sensed()
+        self._information_canbe_sensed = self.information_types_can_be_sensed()
 
-        self.sensing_cost = self.sensing_cost_of_information()
+        self._sensing_cost = self.sensing_cost_of_information()
 
     def get_vehicle_no(self) -> int:
         return self._vehicle_no
@@ -244,7 +247,7 @@ class vehicle(object):
         np.random.seed(self._seed)
         return list(np.random.choice(
             a=self.information_number,
-            size=self._max_information_number,
+            size=self._sensed_information_number,
             replace=False))
 
     def sensing_cost_of_information(self) -> list:
@@ -252,8 +255,13 @@ class vehicle(object):
         return list(np.random.uniform(
             low=self._min_sensing_cost,
             high=self._max_sensing_cost,
-            size=self._max_information_number
+            size=self._sensed_information_number
         ))
+    
+    def get_sensing_cost_by_type(self, type: int) -> float:
+        for _ in range(self._sensed_information_number):
+            if self._information_canbe_sensed[_] == type:
+                return self._sensing_cost[_]
     
     def get_vehicle_location(self, nowTimeSlot: int) -> location:
         return self._vehicle_trajectory.get_location(nowTimeSlot)
@@ -261,11 +269,11 @@ class vehicle(object):
     def get_distance_between_edge(self, nowTimeSlot: int, edge_location) -> float:
         return self._vehicle_trajectory.get_location(nowTimeSlot).get_distance(edge_location)
 
-    def get_max_information_number(self) -> int:
-        return self._max_information_number
+    def get_sensed_information_number(self) -> int:
+        return self._sensed_information_number
     
     def get_information_canbe_sensed(self) -> list:
-        return self.information_canbe_sensed
+        return self._information_canbe_sensed
     
     def get_vehicle_trajectory(self) -> trajectory:
         return self._vehicle_trajectory
@@ -273,8 +281,8 @@ class vehicle(object):
     def set_information_number(self, information_number: int) -> None:
         self._information_number = information_number
     
-    def set_max_information_number(self, max_information_number: int) -> None:
-        self._max_information_number = max_information_number
+    def set_sensed_information_number(self, sensed_information_number: int) -> None:
+        self._sensed_information_number = sensed_information_number
 
     def set_transmission_power(self, transmission_power: float) -> None:
         self._transmission_power = transmission_power
@@ -289,29 +297,29 @@ class vehicleList(object):
     """ the vehicle list. """
     def __init__(
         self, 
-        vehicles_number: int, 
-        vehicle_trajectories_file_name: str,
+        number: int, 
+        trajectories_file_name: str,
         information_number: int,
-        max_information_number: int,
+        sensed_information_number: int,
         min_sensing_cost: float,
         max_sensing_cost: float,
         transmission_power: float,
         seeds: list) -> None:
         """ initialize the vehicle list.
         Args:
-            vehicles_number: the number of vehicles.
-            vehicle_trajectories_file_name: the file name of the vehicle trajectories.
+            number: the number of vehicles.
+            trajectories_file_name: the file name of the vehicle trajectories.
             information_number: the number of information list.
-            max_information_number: the maximum number of information, which can be sensed by the vehicle.
+            sensed_information_number: the maximum number of information, which can be sensed by the vehicle.
             min_sensing_cost: the minimum sensing cost.
             max_sensing_cost: the maximum sensing cost.
             transmission_power: the transmission power.
             seeds: the random seed list.
         """
-        self._vehicles_number = vehicles_number
-        self._vehicle_trajectories_file_name = vehicle_trajectories_file_name
+        self._number = number
+        self._trajectories_file_name = trajectories_file_name
         self._information_number = information_number
-        self._max_information_number = max_information_number
+        self._sensed_information_number = sensed_information_number
         self._min_sensing_cost = min_sensing_cost
         self._max_sensing_cost = max_sensing_cost
         self._transmission_power = transmission_power
@@ -326,7 +334,7 @@ class vehicleList(object):
                     vehicle_no=i,
                     vehicle_trajectory=self._vehicle_trajectories[i],
                     information_number=self._information_number,
-                    max_information_number=self._max_information_number,
+                    sensed_information_number=self._sensed_information_number,
                     min_sensing_cost=self._min_sensing_cost,
                     max_sensing_cost=self._max_sensing_cost,
                     transmission_power=self._transmission_power,
@@ -337,20 +345,14 @@ class vehicleList(object):
     def get_vehicle_list(self) -> list:
         return self._vehicle_list
 
-    def get_vehicles_number(self) -> int:
-        return self._vehicles_number
+    def get_number(self) -> int:
+        return self._number
 
-    def get_max_information_number(self) -> int:
-        return self._max_information_number
+    def get_sensed_information_number(self) -> int:
+        return self._sensed_information_number
 
     def get_vehicle(self, vehicle_no: int) -> vehicle:
         return self._vehicle_list[vehicle_no]
-
-    def set_vehicle_list(self, vehicle_list: list) -> None:
-        self._vehicle_list = vehicle_list
-
-    def set_vehicles_number(self, vehicles_number: int) -> None:
-        self._vehicles_number = vehicles_number
 
     def read_vehicle_trajectories(self, timeSlots: timeSlots) -> list:
 
@@ -445,7 +447,7 @@ class vehicleAction(object):
             return False
         vehicle = vehicleList.get_vehicle(self._vehicle_no)
         if not (len(self._sensed_information) == len(self._sensing_frequencies) \
-            == len(self._uploading_priorities) == len(vehicle.get_max_information_number())):
+            == len(self._uploading_priorities) == len(vehicle.get_sensed_information_number())):
             return False
         if self._transmission_power > vehicle.get_transmission_power():
             return False
@@ -479,7 +481,8 @@ class vehicleAction(object):
         edge_location: location,
         path_loss_exponent: int,
         SNR_target: float,
-        probabiliity_threshold: float):
+        probabiliity_threshold: float,
+        action_time: int):
         """ generate the vehicle action from the neural network output.
 
         self._vehicle_action_size = self._max_information_number + self._max_information_number + \
@@ -532,7 +535,7 @@ class vehicleAction(object):
             uploading_priorities=uploading_priorities,
             transmission_power=transmisson_power,
 
-            action_time=now_time
+            action_time=action_time,
         )
 
         if not vehicle_action.check_action(now_time, vehicle_list):
@@ -666,17 +669,17 @@ class applicationList(object):
     """
     def __init__(
         self, 
-        application_number: int,
+        number: int,
         view_number: int,
         views_per_application: int,
         seed: int) -> None:
         """ initialize the application list.
         Args:
-            application_number: the number of application list.
+            number: the number of application list.
             view_number: the number of view list.
             seed: the random seed.
         """
-        self._number = application_number
+        self._number = number
         self._view_number = view_number
         self._views_per_application = views_per_application
         self._seed = seed
@@ -709,23 +712,23 @@ class viewList(object):
     """ the view list. """
     def __init__(
         self, 
-        view_number: int, 
+        number: int, 
         information_number: int, 
-        max_information_number: int, 
+        required_information_number: int, 
         seeds: list) -> None:
         """ initialize the view list.
         Args:
-            view_number: the number of view list.
+            number: the number of view list.
             information_number: the number of information.
-            max_information_number: the maximume number of information required by one view.
+            required_information_number: the maximume number of information required by one view.
             seeds: the random seeds.
         """
-        self._number = view_number
+        self._number = number
         self._information_number = information_number
-        self._max_information_number = max_information_number
+        self._required_information_number = required_information_number
         self._seeds = seeds
 
-        if self._max_information_number > self._information_number:
+        if self._required_information_number > self._information_number:
             raise ValueError("The max_information_number must be less than the information_number.")
 
         if len(self._seeds) != self._number:
@@ -737,7 +740,7 @@ class viewList(object):
         self._random_information_number = np.random.randint(
             size=self._number,
             low=1,
-            high=self._max_information_number
+            high=self._required_information_number
         )
 
         for _ in range(self._number):
@@ -750,6 +753,9 @@ class viewList(object):
                     replace=False
                 ))
             )
+
+    def get_number(self) -> int:
+        return self._number
         
     def get_view_list(self) -> list:
         """ get the view list.
@@ -775,7 +781,7 @@ class informationList(object):
     """
     def __init__(
         self, 
-        information_number: int, 
+        number: int, 
         seed: int, 
         data_size_low_bound: float,
         data_size_up_bound: float,
@@ -790,7 +796,7 @@ class informationList(object):
         path_loss_exponent) -> None:
         """ initialize the information list.
         Args:
-            information_number: the number of information list.
+            number: the number of information int the list.
             seed: the random seed.
             data_size_low_bound: the low bound of the data size.
             data_size_up_bound: the up bound of the data size.
@@ -798,7 +804,7 @@ class informationList(object):
             update_interval_low_bound: the low bound of the update interval.
             update_interval_up_bound: the up bound of the update interval.
         """
-        self._number = information_number
+        self._number = number
         self._seed = seed
         self._data_size_low_bound = data_size_low_bound
         self._data_size_up_bound = data_size_up_bound
@@ -843,6 +849,12 @@ class informationList(object):
                 path_loss_exponent=path_loss_exponent
             )
 
+    def get_number(self) -> int:
+        """ get the number of information.
+        Returns:
+            the number of information.
+        """
+        return self._number
 
     def get_information_list(self) -> list:
         return self.information_list
@@ -1034,7 +1046,7 @@ class informationRequirements(object):
             )
         return views_required_by_application_at_now
     
-    def information_required_by_views_at_now(self, nowTimeStamp: int) -> list:
+    def information_required_by_views_at_now(self, nowTimeStamp: int) -> dict:
         """ get the information required by views now.
         Args:
             nowTimeStamp: the current timestamp.
@@ -1042,22 +1054,25 @@ class informationRequirements(object):
             the information set required by views list.
         """
         views_required_by_application_at_now = self.views_required_by_application_at_now(nowTimeStamp)
-        information_type_required_by_views_at_now = set()
+        views_required_number = len(views_required_by_application_at_now)
+        
+        information_type_required_by_views_at_now = []
 
         for _ in views_required_by_application_at_now:
+            information_type_required = []
             view_list = self._view_list[_]
             for __ in view_list:
-                information_type_required_by_views_at_now.add(
+                information_type_required.append(
                     self._information_list[__]["type"]
-                )
+                ) 
+            information_type_required_by_views_at_now.append(
+                information_type_required
+            )
 
-        information_required_by_views_at_now = []
-        for _ in information_type_required_by_views_at_now:
-            for __ in self._information_list:
-                if __["type"] == _:
-                    information_required_by_views_at_now.append(__)
-
-        return information_required_by_views_at_now
+        return {
+            "views_required_number": views_required_number,
+            "information_type_required_by_views_at_now": information_type_required_by_views_at_now
+        }
 
 
 if __name__ == "__main__":

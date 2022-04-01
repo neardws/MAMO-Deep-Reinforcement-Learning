@@ -268,6 +268,8 @@ def get_sensed_information_type(sensed_information_number, sensed_information, v
         for i in sensed_information_number:
             if sensed_information[i] == 1:
                 sensed_information_type[i] = vehicle.get_information_canbe_sensed()[i]
+            else:
+                sensed_information_type[i] = -1
         return sensed_information_type
 
 class sensingAndQueuing(object):
@@ -276,7 +278,7 @@ class sensingAndQueuing(object):
     def __init__(self, vehicle: vehicle, vehicle_action: vehicleAction, information_list: informationList):
         
         self._vehicle_no = vehicle.get_vehicle_no()
-        self._sensed_information_number = vehicle.get_max_information_number()
+        self._sensed_information_number = vehicle.get_sensed_information_number()
 
         self._action_time = vehicle_action.get_action_time()
         self._sensed_information = vehicle_action.get_sensed_information()
@@ -290,6 +292,9 @@ class sensingAndQueuing(object):
         self._arrival_moments = self.compute_arrival_moments(self._arrival_intervals)
         self._updating_moments = self.compute_updating_moments(self._arrival_intervals, information_list)
         self._queuing_times = self.compute_queuing_times(information_list)
+
+    def get_sensed_information_type(self) -> np.array:
+        return self._sensed_information_type
 
     def get_arrival_intervals(self) -> np.array:
         return self._arrival_intervals
@@ -439,7 +444,7 @@ class v2iTransmission(object):
         self._vehicle_trajectory = vehicle.get_vehicle_trajectory()
         self._transmission_power = vehicle_action.get_transmission_power()
         self._edge_location = edge.get_edge_location()
-        self._sensed_information_number = vehicle.get_max_information_number()
+        self._sensed_information_number = vehicle.get_sensed_information_number()
         self._sensed_information = vehicle_action.get_sensed_information()
         
         self._sensed_information_type = get_sensed_information_type(
@@ -455,6 +460,9 @@ class v2iTransmission(object):
         self._path_loss_exponent = path_loss_exponent
 
         self._transmission_times = self.compute_transmission_times()
+
+    def get_transmission_times(self) -> np.array:
+        return self._transmission_times
 
     def compute_transmission_times(self) -> np.array:
         """
