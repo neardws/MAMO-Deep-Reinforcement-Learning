@@ -246,7 +246,7 @@ class vehicle(object):
     def information_types_can_be_sensed(self) -> list:
         np.random.seed(self._seed)
         return list(np.random.choice(
-            a=self.information_number,
+            a=self._information_number,
             size=self._sensed_information_number,
             replace=False))
 
@@ -257,6 +257,9 @@ class vehicle(object):
             high=self._max_sensing_cost,
             size=self._sensed_information_number
         ))
+
+    def get_sensing_cost(self) -> list:
+        return self._sensing_cost
     
     def get_sensing_cost_by_type(self, type: int) -> float:
         for _ in range(self._sensed_information_number):
@@ -734,7 +737,7 @@ class viewList(object):
         if len(self._seeds) != self._number:
             raise ValueError("The number of seeds must be equal to the number of view lists.")
 
-        self.view_list = list()
+        self._view_list = []
 
         np.random.seed(self._seeds[0])
         self._random_information_number = np.random.randint(
@@ -746,7 +749,7 @@ class viewList(object):
         for _ in range(self._number):
             random_information_number = self._random_information_number[_]
             np.random.seed(self._seeds[_])
-            self.view_list.append(
+            self._view_list.append(
                 list(np.random.choice(
                     a=self._information_number, 
                     size=random_information_number,
@@ -762,14 +765,8 @@ class viewList(object):
         Returns:
             the view list.
         """
-        return self.view_list
+        return self._view_list
 
-    def set_view_list(self, view_list: list) -> None:
-        """ set the view list.
-        Args:
-            view_list: the view list.
-        """
-        self.view_list = view_list
 
 
 class informationList(object):
@@ -1073,6 +1070,24 @@ class informationRequirements(object):
             "views_required_number": views_required_number,
             "information_type_required_by_views_at_now": information_type_required_by_views_at_now
         }
+    
+    def information_required_at_now(self, nowTimeStamp: int) -> np.array:
+        """ get the information required now.
+        Args:
+            nowTimeStamp: the current timestamp.
+        Returns:
+            the information set required.
+        """
+        views_required_by_application_at_now = self.views_required_by_application_at_now(nowTimeStamp)
+        
+        information_type_required_at_now = np.zeros(self._information_list.get_number())
+
+        for view_index in views_required_by_application_at_now:
+            view = self._view_list[view_index]
+            for information_index in view:
+                information_type_required_at_now[self._information_list[information_index]["type"]] = 1 
+
+        return information_type_required_at_now
 
 
 if __name__ == "__main__":
