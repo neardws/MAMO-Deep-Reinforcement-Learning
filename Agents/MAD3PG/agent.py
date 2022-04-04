@@ -9,7 +9,7 @@ from acme import datasets
 from Environments import specs
 from acme import types
 from acme.adders import reverb as reverb_adders
-from acme.agents.tf import actors
+import actors
 from acme.agents import agent
 import learning
 from acme.tf import networks as network_utils

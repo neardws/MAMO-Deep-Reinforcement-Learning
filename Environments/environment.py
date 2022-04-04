@@ -17,8 +17,6 @@ from utilities import sensingAndQueuing
 from utilities import v2iTransmission
 from typing import List, Tuple
 
-# TODO: Add typing annotations
-
 @dataclasses.dataclass
 class vehicularNetworkEnvConfig:
     """Configuration for the vehicular network environment."""
@@ -236,7 +234,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         self._reset_next_step = False
         return dm_env.restart(self._observation())
 
-    def step(self, action: np.array ) -> dm_env.TimeStep:
+    def step(self, action: np.array) -> dm_env.TimeStep:
         """Run one timestep of the environment's dynamics. When end of
         episode is reached, you are responsible for calling `reset()`
         to reset this environment's state.
@@ -662,104 +660,71 @@ class vehicularNetworkEnv(dm_env.Environment):
         return observation
 
     @staticmethod
-    def get_vehicle_observations(observation: np.ndarray) -> List[np.ndarray]:
-        """Return the observations of the environment at each vehicle."""
-        """
-        edge_observation_size: int = 1 + self._config.vehicle_number + self._config.sensed_information_number * 2 * self._config.vehicle_number + \
-            self._config.information_number + self._config.information_number
-            # now_time_slot + vehicle distances + information_canbe_senseds + sensing_cost_of_informations +  \
-            # information_in_edge + information_requried
-
+    def get_vehicle_observations(environment: dm_env.Environment, observation: np.ndarray) -> List[np.ndarray]:
+        """Return the observations of the environment at each vehicle.
         vehicle_observation_size: int = 1 + 1 + 1 + self._config.sensed_information_number + self._config.sensed_information_number + \
             self._config.information_number + self._config.information_number 
             # now_time_slot + vehicle_index + distance + information_canbe_sensed + sensing_cost_of_information + \
             # information_in_edge + information_requried
         """
-        observation = np.zeros((self._observation_size,))
+        vehicle_observations = []
+        for _ in range(environment._config.vehicle_number):
+            vehicle_observations.append(np.zeros((environment._vehicle_observation_size,)))
+        
         index = 0
+        observation_index = 0
         # now_time_slot
-        observation[index] = float(self._time_slots.now() / self._time_slots.get_number())
+        for _ in range(environment._config.vehicle_number):
+            vehicle_observations[_][index] = observation[observation_index]
         index += 1
-        # vehicle distances
-        for _ in range(self._config.vehicle_number):
-            observation[index] = float(self._vehicle_list.get_vehicle(_).get_distance_between_edge(
-                nowTimeSlot=self._time_slots.now(),
-                edge_location=self._edge_node.get_edge_location(),
-            ) / (self._edge_node.get_communication_range() * np.sqrt(2)))
-            index += 1
-        # information_canbe_senseds
-        for _ in range(self._config.vehicle_number):
-            for __ in range(self._config.sensed_information_number):
-                observation[index] = float(self._vehicle_list.get_vehicle(_).get_information_canbe_sensed()[__]
-                    / self._config.information_number)
-                index += 1
-        # sensing_cost_of_informations
-        for _ in range(self._config.vehicle_number):
-            for __ in range(self._config.sensed_information_number):
-                observation[index] = float(self._vehicle_list.get_vehicle(_).get_sensing_cost()[__]
-                    / self._config.max_sensing_cost)
-                index += 1
-        # information_in_edge
-        for _ in range(self._config.information_number):
-            if len(self._information_in_edge[_]) == 0:
-                observation[index] = 0
-            else:
-                observation[index] = float(self._information_in_edge[_][0].get_received_moment() 
-                    / self._time_slots.get_number())
-            index += 1
-        # information_requried
-        for _ in range(self._config.information_number):
-            observation[index] = float(self._information_requirements.get_information_required_at_now()[_])
-            index += 1
+        observation_index += 1
 
-        return observation
-
-
-    def _vehicle_observation(self, vehicle_index: int) -> np.ndarray:
-        """Return the observation of the environment at each vehicle."""
-        """
-        vehicle_observation_size: int = 1 + 1 + 1 + self._config.sensed_information_number + self._config.sensed_information_number + \
-            self._config.information_number + self._config.information_number 
-            # now_time_slot + vehicle_index + distance + information_canbe_sensed + sensing_cost_of_information + \
-            # information_in_edge + information_requried
-        """
-        vehicle_observation = np.zeros((self._vehicle_observation_size,))
-        index = 0
-        # now_time_slot
-        vehicle_observation[index] = float(self._time_slots.now() / self._time_slots.get_number())
-        index += 1
         # vehicle_index
-        vehicle_observation[index] = float(vehicle_index / self._config.vehicle_number)
+        for _ in range(environment._config.vehicle_number):
+            vehicle_observations[_][index] = float(_ / environment._config.vehicle_number)
         index += 1
+
         # vehicle distances
-        vehicle_observation[index] = float(self._vehicle_list.get_vehicle(vehicle_index).get_distance_between_edge(
-                nowTimeSlot=self._time_slots.now(),
-                edge_location=self._edge_node.get_edge_location(),
-            ) / (self._edge_node.get_communication_range() * np.sqrt(2)))
+        for _ in range(environment._config.vehicle_number):
+            vehicle_observations[_][index] = observation[observation_index]
+            observation_index += 1
         index += 1
+
         # information_canbe_senseds
-        for __ in range(self._config.sensed_information_number):
-            vehicle_observation[index] = float(self._vehicle_list.get_vehicle(vehicle_index).get_information_canbe_sensed()[__]
-                / self._config.information_number)
-            index += 1
+        for _ in range(environment._config.vehicle_number):
+            origin_index = index
+            for __ in range(environment._config.sensed_information_number):
+                vehicle_observations[_][origin_index] = observation[observation_index]
+                observation_index += 1
+                origin_index += 1
+        index = origin_index
+
         # sensing_cost_of_informations
-        for __ in range(self._config.sensed_information_number):
-            vehicle_observation[index] = float(self._vehicle_list.get_vehicle(vehicle_index).get_sensing_cost()[__]
-                / self._config.max_sensing_cost)
-            index += 1
+        for _ in range(environment._config.vehicle_number):
+            origin_index = index
+            for __ in range(environment._config.sensed_information_number):
+                vehicle_observations[_][origin_index] = observation[observation_index]
+                observation_index += 1
+                origin_index += 1
+        index = origin_index
+
         # information_in_edge
-        for _ in range(self._config.information_number):
-            if len(self._information_in_edge[_]) == 0:
-                vehicle_observation[index] = 0
-            else:
-                vehicle_observation[index] = float(self._information_in_edge[_][0].get_received_moment() 
-                    / self._time_slots.get_number())
+        for _ in range(environment._config.information_number):
+            for __ in range(environment._config.vehicle_number):
+                vehicle_observations[__][index] = observation[observation_index]
+            observation_index += 1
             index += 1
+        
         # information_requried
-        for _ in range(self._config.information_number):
-            vehicle_observation[index] = float(self._information_requirements.get_information_required_at_now()[_])
+        for _ in range(environment._config.information_number):
+            for __ in range(environment._config.vehicle_number):
+                vehicle_observations[__][index] = observation[observation_index]
+            observation_index += 1
             index += 1
 
-    def _edge_observation(self) -> np.ndarray:
+        return vehicle_observations
+
+    @staticmethod
+    def get_edge_observation(observation: np.ndarray) -> np.ndarray:
         """Return the observation of the environment at edge."""
-        return self._observation()
+        return observation

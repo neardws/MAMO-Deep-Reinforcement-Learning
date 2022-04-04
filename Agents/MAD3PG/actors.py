@@ -1,11 +1,12 @@
 """Generic actor implementation, using TensorFlow and Sonnet."""
 
-from typing import Optional, Tuple
+from typing import Optional, List
 
 from acme import adders
 from acme import core
 from acme import types
 # Internal imports.
+import numpy as np
 from acme.tf import utils as tf2_utils
 from acme.tf import variable_utils as tf2_variable_utils
 
@@ -13,6 +14,7 @@ import dm_env
 import sonnet as snt
 import tensorflow as tf
 import tensorflow_probability as tfp
+from Environments.environment import vehicularNetworkEnv
 
 tfd = tfp.distributions
 
@@ -29,6 +31,7 @@ class FeedForwardActor(core.Actor):
         self,
         vehicle_policy_network: snt.Module,
         edge_policy_network: snt.Module,
+        environment: vehicularNetworkEnv,
         adder: Optional[adders.Adder] = None,
         variable_client: Optional[tf2_variable_utils.VariableClient] = None,
     ):
@@ -50,26 +53,39 @@ class FeedForwardActor(core.Actor):
         self._variable_client = variable_client
         self._vehicle_policy_network = vehicle_policy_network
         self._edge_policy_network = edge_policy_network
+        self._environment = environment
 
     @tf.function
     def _policy(self, observation: types.NestedTensor) -> types.NestedTensor:
         # Add a dummy batch dimension and as a side effect convert numpy to TF.
-        batched_observation = tf2_utils.add_batch_dim(observation)
+        vehicle_observations: List[types.NestedTensor] = vehicularNetworkEnv.get_vehicle_observations(environment=self._environment, observation=observation)
+        edge_observation = vehicularNetworkEnv.get_edge_observation(observation=observation)
 
-        # Compute the policy, conditioned on the observation.
-        policy = self._policy_network(batched_observation)
+        action = []
+        for i in range(len(vehicle_observations)):
+            vehicle_batched_observations = tf2_utils.add_batch_dim(vehicle_observations[i])
+            # Compute the policy, conditioned on the observation.
+            vehicle_policy = self._vehicle_policy_network(vehicle_batched_observations)
+            # Sample from the policy if it is stochastic.
+            vehicle_action = vehicle_policy.sample() if isinstance(vehicle_policy, tfd.Distribution) else vehicle_policy
+            for j in vehicle_action:
+                action.append(j)
 
-        # Sample from the policy if it is stochastic.
-        action = policy.sample() if isinstance(policy, tfd.Distribution) else policy
+        edge_batched_observations = tf2_utils.add_batch_dim(edge_observation)
+        edge_policy = self._edge_policy_network(edge_batched_observations)
+        edge_action = edge_policy.sample() if isinstance(edge_policy, tfd.Distribution) else edge_policy
+        for i in edge_action:
+            action.append(i)
 
-        return action
+        return np.array(action)
 
     def select_action(self, observation: types.NestedArray) -> types.NestedArray:
         # Pass the observation through the policy network.
         action = self._policy(observation)
 
         # Return a numpy array with squeezed out batch dimension.
-        return tf2_utils.to_numpy_squeeze(action)
+        return action
+        # return tf2_utils.to_numpy_squeeze(action)
 
     def observe_first(self, timestep: dm_env.TimeStep):
         if self._adder:
