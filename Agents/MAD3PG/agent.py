@@ -3,11 +3,10 @@
 import copy
 import dataclasses
 from typing import Iterator, List, Optional, Tuple
-
 from acme import adders
 from acme import core
 from acme import datasets
-from acme import specs
+from Environments import specs
 from acme import types
 from acme.adders import reverb as reverb_adders
 from acme.agents.tf import actors
@@ -46,37 +45,48 @@ class D3PGConfig:
 class D3PGNetworks:
     """Structure containing the networks for D3PG."""
 
-    policy_network: snt.Module
-    critic_network: snt.Module
-    observation_network: snt.Module
+    policy_network: types.TensorTransformation
+    critic_network: types.TensorTransformation
+    observation_network: types.TensorTransformation
 
     def __init__(
         self,
-        policy_network: snt.Module,
-        critic_network: snt.Module,
+        policy_network: types.TensorTransformation,
+        critic_network: types.TensorTransformation,
         observation_network: types.TensorTransformation,
     ):
         # This method is implemented (rather than added by the dataclass decorator)
         # in order to allow observation network to be passed as an arbitrary tensor
         # transformation rather than as a snt Module.
-        # TODO: use Protocol rather than Module/TensorTransformation.
         self.policy_network = policy_network
         self.critic_network = critic_network
         self.observation_network = utils.to_sonnet_module(observation_network)
 
-    def init(self, environment_spec: specs.EnvironmentSpec):
+    def init(
+        self, 
+        environment_spec: specs.EnvironmentSpec,
+        type: str,   # denoted by the type of network, i.e. 'edge' or 'vehicle' 
+    ):
         """Initialize the networks given an environment spec."""
         # Get observation and action specs.
-        act_spec = environment_spec.actions
-        obs_spec = environment_spec.observations
+        if type == 'edge':
+            observation_spec = environment_spec.edge_observations
+            action_spec = environment_spec.edge_actions
+        elif type == 'vehicle':
+            observation_spec = environment_spec.vehicle_observations
+            action_spec = environment_spec.vehicle_actions
+        else:
+            raise ValueError('type must be either "edge" or "vehicle"')
+            # act_spec = environment_spec.actions
+            # obs_spec = environment_spec.observations
 
         # Create variables for the observation net and, as a side-effect, get a
         # spec describing the embedding space.
-        emb_spec = utils.create_variables(self.observation_network, [obs_spec])
+        emb_spec = utils.create_variables(self.observation_network, [observation_spec])
 
         # Create variables for the policy and critic nets.
         _ = utils.create_variables(self.policy_network, [emb_spec])
-        _ = utils.create_variables(self.critic_network, [emb_spec, act_spec])
+        _ = utils.create_variables(self.critic_network, [emb_spec, action_spec])
 
     def make_policy(
         self,

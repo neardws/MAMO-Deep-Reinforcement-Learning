@@ -5,9 +5,7 @@ import pandas as pd
 import numpy as np
 import time
 
-
 class vehicleTrajectoriesProcessor(object):
-    # TODO: test the vehicleTrajectoriesProcessor class
     def __init__(
         self, 
         file_name: str, 
@@ -273,7 +271,6 @@ def get_sensed_information_type(sensed_information_number, sensed_information, v
         return sensed_information_type
 
 class sensingAndQueuing(object):
-    # TODO: test the sensingAndQueuing class
     """This class is used to get the queue time of the edge with the highest queue length"""
     def __init__(self, vehicle: vehicle, vehicle_action: vehicleAction, information_list: informationList):
         
@@ -423,7 +420,6 @@ class sensingAndQueuing(object):
 
 
 class v2iTransmission(object):
-    # TODO: implement the V2I transmission model
     """
     This class is used to define the transmission of a vehicle to an edge.
     """

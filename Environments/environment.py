@@ -12,9 +12,12 @@ from dataStruct import vehicleList
 from dataStruct import viewList
 from dataStruct import vehicleAction
 from dataStruct import edgeAction
-from dataStruct import information
+from dataStruct import informationPacket
 from utilities import sensingAndQueuing
 from utilities import v2iTransmission
+from typing import List, Tuple
+
+# TODO: Add typing annotations
 
 @dataclasses.dataclass
 class vehicularNetworkEnvConfig:
@@ -41,7 +44,7 @@ class vehicularNetworkEnvConfig:
     min_sensing_cost: float = 0.1
     max_sensing_cost: float = 1.0
     transmission_power: float = 100.0  # mW
-    vehicle_list_seeds: list = []
+    vehicle_list_seeds: List[int] = []
 
     """"Edge related."""
     edge_no: int = 0
@@ -53,7 +56,7 @@ class vehicularNetworkEnvConfig:
     """View related."""
     view_number: int = 30
     required_information_number: int = 10  # the maximume number of information required by one view.
-    view_list_seeds: list = []
+    view_list_seeds: List[int] = []
 
     """Application related."""
     application_number: int = 0
@@ -72,7 +75,7 @@ class vehicularNetworkEnvConfig:
     map_width: float = 1000.0   # meters
     trajectories_time_start: str = '2016-11-16 08:00:00'
     trajectories_time_end: str = '2016-11-16 08:05:00'
-    trajectories_out_file_name = 'CSV/trajectories_20161116_0800_0850.csv'
+    trajectories_out_file_name: str = 'CSV/trajectories_20161116_0800_0850.csv'
 
     """V2I Transmission related."""
     white_gaussian_noise: int = -90  # dBm
@@ -169,22 +172,23 @@ class vehicularNetworkEnv(dm_env.Environment):
                 self._define_size_of_spaces()
     
         """To record the timeliness, consistency, redundancy, and cost of views."""
-        self._timeliness_views_history: list = []
-        self._consistency_views_history: list = []
-        self._redundancy_views_history: list = []
-        self._cost_views_history: list = []
+        self._timeliness_views_history: List[float] = []
+        self._consistency_views_history: List[float] = []
+        self._redundancy_views_history: List[float] = []
+        self._cost_views_history: List[float] = []
 
-        self._reward_history: list = []
+        self._reward_history: List[float] = []
 
         self._reward: np.array = np.zeros(self._reward_size)
 
-        self._information_in_edge: list = []
+        self._information_in_edge: List[List[informationPacket]] = []
+
         for _ in range(self._config.information_number):
             self._information_in_edge.append([])
 
         self._reset_next_step: bool = True
 
-    def _define_size_of_spaces(self) -> tuple:
+    def _define_size_of_spaces(self) -> Tuple[int, int, int, int, int, int, int]:
         """
         Defined the shape of the action space.
         """
@@ -290,7 +294,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             return dm_env.termination(observation=self._observation(), reward=self._reward)
         return dm_env.transition(observation=self._observation(), reward=self._reward)
 
-    def transform_action_array_to_actions(self, action: np.array) -> tuple:
+    def transform_action_array_to_actions(self, action: np.array) -> Tuple[int, List[List[int]], List[vehicleAction], edgeAction]:
         """Transform the action array to the actions of vehicles and the edge node.
         Args:
             action: the action of the agent.
@@ -307,14 +311,14 @@ class vehicularNetworkEnv(dm_env.Environment):
             len(edge_action_array) != self._edge_action_size:
             raise ValueError('The length of the action is not correct.')
 
-        vehicle_actions = []
+        vehicle_actions: List[vehicleAction] = []
         for i in range(self._vehicle_number):
             vehicle_actions.append(
                 vehicleAction.generate_from_np_array(
                     vehicle_no=i,
                     now_time=self._time_slots.now(),
                     vehicle_list=self._vehicle_list,
-                    max_information_number=self._max_information_number,
+                    sensed_information_number=self._config.sensed_information_number,
                     network_output=vhielce_action_array[i * self._vehicle_action_size: (i + 1) * self._vehicle_action_size],
                     white_gaussian_noise=self._config.white_gaussian_noise,
                     mean_channel_fading_gain=self._config.mean_channel_fading_gain,
@@ -327,7 +331,7 @@ class vehicularNetworkEnv(dm_env.Environment):
                 )
             )
         
-        edge_action = edgeAction.generate_from_np_array(
+        edge_action: edgeAction = edgeAction.generate_from_np_array(
             now_time=self._time_slots.now(),
             edge_node=self._edge_node,
             action_time=self._time_slots.now(),
@@ -335,9 +339,8 @@ class vehicularNetworkEnv(dm_env.Environment):
             vehicle_number=self._vehicle_number,
         )
         
-        information_required = self._information_requirements.information_required_by_views_at_now(self._time_slots.now())
-        views_required_number: int = information_required["views_required_number"]
-        information_type_required_by_views_at_now: list = information_required["information_type_required_by_views_at_now"]
+        views_required_number: int = self._information_requirements.get_views_required_number_at_now(self._time_slots.now())
+        information_type_required_by_views_at_now: List[List[int]] = self._information_requirements.get_information_type_required_by_views_at_now_at_now(self._time_slots.now())
 
         return views_required_number, information_type_required_by_views_at_now, vehicle_actions, edge_action
 
@@ -347,7 +350,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         information_type_required_by_views_at_now: list,
         vehicle_actions: list,
         edge_action: edgeAction,
-        vehicle_no: int = -1) -> float:
+        vehicle_no: int = -1) -> List[List[informationPacket]]:
         """Compute the reward.
         Args:
             views_required_number: the number of views required by applications.
@@ -360,7 +363,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             reward: the reward of the vehicle.
         """
 
-        information_objects_ordered_by_views = []
+        information_objects_ordered_by_views: List[List[informationPacket]] = []
         for i in range(views_required_number):
             information_objects_ordered_by_views.append(list())
 
@@ -396,7 +399,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             transmission_times = v2i_transmission.get_transmission_times()
 
             for information_index in range(len(sensed_information_type)):
-                infor = information(
+                infor = informationPacket(
                     type=sensed_information_type[information_index],
                     vehicle_no=i,
                     edge_no=self._edge_node.get_edge_no(),
@@ -426,7 +429,7 @@ class vehicularNetworkEnv(dm_env.Environment):
 
         return information_objects_ordered_by_views
 
-    def update_information_in_edge(self, information_objects_ordered_by_views: list):
+    def update_information_in_edge(self, information_objects_ordered_by_views: list) -> None:
         """Update the information in edge.
         Args:
             information_objects_ordered_by_views: the information objects ordered by views.
@@ -653,10 +656,64 @@ class vehicularNetworkEnv(dm_env.Environment):
             index += 1
         # information_requried
         for _ in range(self._config.information_number):
-            observation[index] = float(self._information_requirements.information_required_at_now()[_])
+            observation[index] = float(self._information_requirements.get_information_required_at_now()[_])
             index += 1
 
         return observation
+
+    @staticmethod
+    def get_vehicle_observations(observation: np.ndarray) -> List[np.ndarray]:
+        """Return the observations of the environment at each vehicle."""
+        """
+        edge_observation_size: int = 1 + self._config.vehicle_number + self._config.sensed_information_number * 2 * self._config.vehicle_number + \
+            self._config.information_number + self._config.information_number
+            # now_time_slot + vehicle distances + information_canbe_senseds + sensing_cost_of_informations +  \
+            # information_in_edge + information_requried
+
+        vehicle_observation_size: int = 1 + 1 + 1 + self._config.sensed_information_number + self._config.sensed_information_number + \
+            self._config.information_number + self._config.information_number 
+            # now_time_slot + vehicle_index + distance + information_canbe_sensed + sensing_cost_of_information + \
+            # information_in_edge + information_requried
+        """
+        observation = np.zeros((self._observation_size,))
+        index = 0
+        # now_time_slot
+        observation[index] = float(self._time_slots.now() / self._time_slots.get_number())
+        index += 1
+        # vehicle distances
+        for _ in range(self._config.vehicle_number):
+            observation[index] = float(self._vehicle_list.get_vehicle(_).get_distance_between_edge(
+                nowTimeSlot=self._time_slots.now(),
+                edge_location=self._edge_node.get_edge_location(),
+            ) / (self._edge_node.get_communication_range() * np.sqrt(2)))
+            index += 1
+        # information_canbe_senseds
+        for _ in range(self._config.vehicle_number):
+            for __ in range(self._config.sensed_information_number):
+                observation[index] = float(self._vehicle_list.get_vehicle(_).get_information_canbe_sensed()[__]
+                    / self._config.information_number)
+                index += 1
+        # sensing_cost_of_informations
+        for _ in range(self._config.vehicle_number):
+            for __ in range(self._config.sensed_information_number):
+                observation[index] = float(self._vehicle_list.get_vehicle(_).get_sensing_cost()[__]
+                    / self._config.max_sensing_cost)
+                index += 1
+        # information_in_edge
+        for _ in range(self._config.information_number):
+            if len(self._information_in_edge[_]) == 0:
+                observation[index] = 0
+            else:
+                observation[index] = float(self._information_in_edge[_][0].get_received_moment() 
+                    / self._time_slots.get_number())
+            index += 1
+        # information_requried
+        for _ in range(self._config.information_number):
+            observation[index] = float(self._information_requirements.get_information_required_at_now()[_])
+            index += 1
+
+        return observation
+
 
     def _vehicle_observation(self, vehicle_index: int) -> np.ndarray:
         """Return the observation of the environment at each vehicle."""
@@ -700,7 +757,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             index += 1
         # information_requried
         for _ in range(self._config.information_number):
-            vehicle_observation[index] = float(self._information_requirements.information_required_at_now()[_])
+            vehicle_observation[index] = float(self._information_requirements.get_information_required_at_now()[_])
             index += 1
 
     def _edge_observation(self) -> np.ndarray:

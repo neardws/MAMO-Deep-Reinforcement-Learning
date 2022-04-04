@@ -2,7 +2,7 @@
 
 from typing import Mapping, Sequence
 
-from acme import specs
+from Environments import specs
 from acme import types
 from acme.tf import networks
 from acme.tf import utils as tf2_utils

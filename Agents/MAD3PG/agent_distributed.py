@@ -4,7 +4,7 @@ import copy
 from typing import Callable, Dict, Optional
 
 import acme
-from acme import specs
+from Environments import specs
 from agent import D3PGNetworks, D3PGBuilder, D3PGConfig
 from acme.tf import savers as tf2_savers
 from acme.utils import counting

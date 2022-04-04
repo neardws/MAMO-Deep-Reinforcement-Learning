@@ -2,7 +2,7 @@
 
 from absl.testing import absltest
 import acme
-from acme import specs
+from Environments import specs
 from agent_distributed import MultiAgentDistributedDDPG
 from acme.testing import fakes
 from acme.tf import networks
