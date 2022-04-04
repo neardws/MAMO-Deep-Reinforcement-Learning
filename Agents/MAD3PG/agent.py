@@ -24,8 +24,36 @@ import tensorflow as tf
 
 @dataclasses.dataclass
 class D3PGConfig:
-    """Configuration options for the MAD3PG agent."""
-
+    """Configuration options for the MAD3PG agent.
+    Args:
+        environment_spec: description of the actions, observations, etc.
+        policy_network: the online (optimized) policy.
+        critic_network: the online critic.
+        observation_network: optional network to transform the observations before
+            they are fed into any network.
+        discount: discount to use for TD updates.
+        batch_size: batch size for updates.
+        prefetch_size: size to prefetch from replay.
+        target_update_period: number of learner steps to perform before updating
+            the target networks.
+        policy_optimizer: optimizer for the policy network updates.
+        critic_optimizer: optimizer for the critic network updates.
+        min_replay_size: minimum replay size before updating.
+        max_replay_size: maximum replay size.
+        samples_per_insert: number of samples to take from replay for every insert
+            that is made.
+        n_step: number of steps to squash into a single transition.
+        sigma: standard deviation of zero-mean, Gaussian exploration noise.
+        clipping: whether to clip gradients by global norm.
+        replay_table_name: string indicating what name to give the replay table.
+        counter: counter object used to keep track of steps.
+        logger: logger object to be used by learner.
+        checkpoint: boolean indicating whether to checkpoint the learner.
+    """
+    environment_spec: Optional[specs.EnvironmentSpec] = None
+    policy_network: Optional[snt.Module] = None
+    critic_network: Optional[snt.Module] = None
+    observation_network: types.TensorTransformation = tf.identity
     discount: float = 0.99
     batch_size: int = 256
     prefetch_size: int = 4
@@ -39,6 +67,9 @@ class D3PGConfig:
     sigma: float = 0.3
     clipping: bool = True
     replay_table_name: str = reverb_adders.DEFAULT_PRIORITY_TABLE
+    counter: Optional[counting.Counter] = None
+    logger: Optional[loggers.Logger] = None
+    checkpoint: bool = True
 
 
 @dataclasses.dataclass
@@ -113,8 +144,67 @@ class D3PGNetworks:
         return snt.Sequential(stack)
 
 
-class D3PGBuilder:
-    """Builder for D3PG which constructs individual components of the agent."""
+class D3PG(agent.Agent):
+    """D3PG Agent.
+    This implements a single-process D3PG agent. This is an actor-critic algorithm
+    that generates data via a behavior policy, inserts N-step transitions into
+    a replay buffer, and periodically updates the policy (and as a result the
+    behavior) by sampling uniformly from this buffer.
+    """
+
+    def __init__(
+        self,
+        config: D3PGConfig,
+    ):
+        """Initialize the agent.
+        Args:
+            config: Configuration for the agent.
+        """
+        self._config = config
+        # Create the Builder object which will internally create agent components.
+        
+
+        # TODO: pass the network dataclass in directly.
+        online_networks = D3PGNetworks(
+            policy_network=policy_network,
+            critic_network=critic_network,
+            observation_network=observation_network)
+
+        # Target networks are just a copy of the online networks.
+        target_networks = copy.deepcopy(online_networks)
+
+        # Initialize the networks.
+        online_networks.init(environment_spec)
+        target_networks.init(environment_spec)
+
+        # TODO: either make this Dataclass or pass only one struct.
+        # The network struct passed to make_learner is just a tuple for the
+        # time-being (for backwards compatibility).
+        networks = (online_networks, target_networks)
+
+        # Create the behavior policy.
+        policy_network = online_networks.make_policy(environment_spec, sigma)
+
+        # Create the replay server and grab its address.
+        replay_tables = builder.make_replay_tables(environment_spec)
+        replay_server = reverb.Server(replay_tables, port=None)
+        replay_client = reverb.Client(f'localhost:{replay_server.port}')
+
+        # Create actor, dataset, and learner for generating, storing, and consuming
+        # data respectively.
+        adder = builder.make_adder(replay_client)
+        actor = builder.make_actor(policy_network, adder)
+        dataset = builder.make_dataset_iterator(replay_client)
+        learner = builder.make_learner(networks, dataset, counter, logger, checkpoint)
+
+        super().__init__(
+            actor=actor,
+            learner=learner,
+            min_observations=max(batch_size, min_replay_size),
+            observations_per_step=float(batch_size) / samples_per_insert)
+
+        # Save the replay so we don't garbage collect it.
+        self._replay_server = replay_server
 
     def __init__(self, config: D3PGConfig):
         self._config = config
@@ -233,126 +323,3 @@ class D3PGBuilder:
             logger=logger,
             checkpoint=checkpoint,
         )
-
-
-class D3PG(agent.Agent):
-    """D3PG Agent.
-    This implements a single-process D3PG agent. This is an actor-critic algorithm
-    that generates data via a behavior policy, inserts N-step transitions into
-    a replay buffer, and periodically updates the policy (and as a result the
-    behavior) by sampling uniformly from this buffer.
-    """
-
-    def __init__(
-        self,
-        environment_spec: specs.EnvironmentSpec,
-        policy_network: snt.Module,
-        critic_network: snt.Module,
-        observation_network: types.TensorTransformation = tf.identity,
-        discount: float = 0.99,
-        batch_size: int = 256,
-        prefetch_size: int = 4,
-        target_update_period: int = 100,
-        policy_optimizer: Optional[snt.Optimizer] = None,
-        critic_optimizer: Optional[snt.Optimizer] = None,
-        min_replay_size: int = 1000,
-        max_replay_size: int = 1000000,
-        samples_per_insert: float = 32.0,
-        n_step: int = 5,
-        sigma: float = 0.3,
-        clipping: bool = True,
-        replay_table_name: str = reverb_adders.DEFAULT_PRIORITY_TABLE,
-        counter: Optional[counting.Counter] = None,
-        logger: Optional[loggers.Logger] = None,
-        checkpoint: bool = True,
-    ):
-        """Initialize the agent.
-        Args:
-        environment_spec: description of the actions, observations, etc.
-        policy_network: the online (optimized) policy.
-        critic_network: the online critic.
-        observation_network: optional network to transform the observations before
-            they are fed into any network.
-        discount: discount to use for TD updates.
-        batch_size: batch size for updates.
-        prefetch_size: size to prefetch from replay.
-        target_update_period: number of learner steps to perform before updating
-            the target networks.
-        policy_optimizer: optimizer for the policy network updates.
-        critic_optimizer: optimizer for the critic network updates.
-        min_replay_size: minimum replay size before updating.
-        max_replay_size: maximum replay size.
-        samples_per_insert: number of samples to take from replay for every insert
-            that is made.
-        n_step: number of steps to squash into a single transition.
-        sigma: standard deviation of zero-mean, Gaussian exploration noise.
-        clipping: whether to clip gradients by global norm.
-        replay_table_name: string indicating what name to give the replay table.
-        counter: counter object used to keep track of steps.
-        logger: logger object to be used by learner.
-        checkpoint: boolean indicating whether to checkpoint the learner.
-        """
-        # Create the Builder object which will internally create agent components.
-        builder = D3PGBuilder(
-            # TODO: pass the config dataclass in directly.
-            # TODO: use the limiter rather than the workaround below.
-            # Right now this modifies min_replay_size and samples_per_insert so that
-            # they are not controlled by a limiter and are instead handled by the
-            # Agent base class (the above TODO directly references this behavior).
-            D3PGConfig(
-                discount=discount,
-                batch_size=batch_size,
-                prefetch_size=prefetch_size,
-                target_update_period=target_update_period,
-                policy_optimizer=policy_optimizer,
-                critic_optimizer=critic_optimizer,
-                min_replay_size=1,  # Let the Agent class handle this.
-                max_replay_size=max_replay_size,
-                samples_per_insert=None,  # Let the Agent class handle this.
-                n_step=n_step,
-                sigma=sigma,
-                clipping=clipping,
-                replay_table_name=replay_table_name,
-            ))
-
-        # TODO: pass the network dataclass in directly.
-        online_networks = D3PGNetworks(
-            policy_network=policy_network,
-            critic_network=critic_network,
-            observation_network=observation_network)
-
-        # Target networks are just a copy of the online networks.
-        target_networks = copy.deepcopy(online_networks)
-
-        # Initialize the networks.
-        online_networks.init(environment_spec)
-        target_networks.init(environment_spec)
-
-        # TODO: either make this Dataclass or pass only one struct.
-        # The network struct passed to make_learner is just a tuple for the
-        # time-being (for backwards compatibility).
-        networks = (online_networks, target_networks)
-
-        # Create the behavior policy.
-        policy_network = online_networks.make_policy(environment_spec, sigma)
-
-        # Create the replay server and grab its address.
-        replay_tables = builder.make_replay_tables(environment_spec)
-        replay_server = reverb.Server(replay_tables, port=None)
-        replay_client = reverb.Client(f'localhost:{replay_server.port}')
-
-        # Create actor, dataset, and learner for generating, storing, and consuming
-        # data respectively.
-        adder = builder.make_adder(replay_client)
-        actor = builder.make_actor(policy_network, adder)
-        dataset = builder.make_dataset_iterator(replay_client)
-        learner = builder.make_learner(networks, dataset, counter, logger, checkpoint)
-
-        super().__init__(
-            actor=actor,
-            learner=learner,
-            min_observations=max(batch_size, min_replay_size),
-            observations_per_step=float(batch_size) / samples_per_insert)
-
-        # Save the replay so we don't garbage collect it.
-        self._replay_server = replay_server
