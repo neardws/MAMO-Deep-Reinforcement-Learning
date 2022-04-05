@@ -17,6 +17,8 @@ import sonnet as snt
 import tensorflow as tf
 import tree
 
+from Environments.environment import vehicularNetworkEnv
+
 
 class D3PGLearner(acme.Learner):
     """MAD3PG learner.
@@ -50,6 +52,7 @@ class D3PGLearner(acme.Learner):
         counter: Optional[counting.Counter] = None,
         logger: Optional[loggers.Logger] = None,
         checkpoint: bool = True,
+        environment: Optional[vehicularNetworkEnv] = None,
     ):
         """Initializes the learner.
 
@@ -178,6 +181,8 @@ class D3PGLearner(acme.Learner):
         # fill the replay buffer.
         self._timestamp = None
 
+        self._environment = environment
+
     @tf.function
     def _step(self) -> Dict[str, tf.Tensor]:
         # Update target network
@@ -213,12 +218,116 @@ class D3PGLearner(acme.Learner):
         discount = tf.cast(self._discount, dtype=transitions.discount.dtype)
 
         with tf.GradientTape(persistent=True) as tape:
-            # Maybe transform the observation before feeding into policy and critic.
-            # Transforming the observations this way at the start of the learning
-            # step effectively means that the policy and critic share observation
-            # network weights.
-            o_tm1 = self._observation_network(transitions.observation)
-            o_t = self._target_observation_network(transitions.next_observation)
+            """Deal with the observations."""
+            vehicle_observations_list: List[List[np.array]] = []
+            for _ in range(self._environment._config.vehicle_number):
+                vehicle_observations_list.append([])
+
+            vehicle_next_observations_list: List[List[np.array]] = []
+            for _ in range(self._environment._config.vehicle_number):
+                vehicle_next_observations_list.append([])
+
+            for observation in transitions.observation:
+                vehicle_observations = vehicularNetworkEnv.get_vehicle_observations(
+                    environment=self._environment,
+                    observation=observation,
+                )
+                for i, vehicle_observation in enumerate(vehicle_observations):
+                    vehicle_observations_list[i].append(vehicle_observation)
+            
+            for observation in transitions.next_observation:
+                vehicle_observations = vehicularNetworkEnv.get_vehicle_observations(
+                    environment=self._environment,
+                    observation=observation,
+                )
+                for i, vehicle_observation in enumerate(vehicle_observations):
+                    vehicle_next_observations_list[i].append(vehicle_observation)
+
+            vehicle_observations_np_array_list = []
+            for vehicle_index in range(self._environment._config.vehicle_number):
+                vehicle_observations_np_array: np.array = np.expand_dims(vehicle_observations_list[vehicle_index][0], axis=0)
+                for observation in vehicle_observations_list[vehicle_index][1:]:
+                    vehicle_observations_np_array = np.concatenate((vehicle_observations_np_array, np.expand_dims(observation, axis=0)), axis=0)
+                vehicle_observations_np_array_list.append(vehicle_observations_np_array)
+
+            vehicle_next_observations_np_array_list = []
+            for vehicle_index in range(self._environment._config.vehicle_number):
+                vehicle_next_observations_np_array: np.array = np.expand_dims(vehicle_next_observations_list[vehicle_index][0], axis=0)
+                for observation in vehicle_next_observations_list[vehicle_index][1:]:
+                    vehicle_next_observations_np_array = np.concatenate((vehicle_next_observations_np_array, np.expand_dims(observation, axis=0)), axis=0)
+                vehicle_next_observations_np_array_list.append(vehicle_next_observations_np_array)
+            
+            # TODO: Use tf.stack instead of tf.concat.
+            vehicles_a_t_list = []
+            o_t = self._target_vehicle_observation_network(vehicle_next_observations_np_array_list[vehicle_index])
+            o_t = tree.map_structure(tf.stop_gradient, o_t)
+            vehicles_a_t = self._target_vehicle_policy_network(o_t)
+            vehicles_a_t_list.append(vehicles_a_t)
+            for vehicle_index in range(1, self._environment._config.vehicle_number):
+                o_t = self._target_vehicle_observation_network(vehicle_next_observations_np_array_list[vehicle_index])
+                o_t = tree.map_structure(tf.stop_gradient, o_t)
+                a_t = self._target_vehicle_policy_network(o_t)
+                vehicles_a_t_list.append(a_t)
+                vehicles_a_t = tf.concat([vehicles_a_t, a_t], axis=0)
+
+            """Compute the loss for the policy and critic of vehicles."""
+            vehicle_critic_losses = []
+            vehicle_policy_losses = []
+            for vehicle_index in range(self._environment._config.vehicle_number):
+                # Maybe transform the observation before feeding into policy and critic.
+                # Transforming the observations this way at the start of the learning
+                # step effectively means that the policy and critic share observation
+                # network weights.
+
+                o_tm1 = self._vehicle_observation_network(vehicle_observations_np_array_list[vehicle_index])
+                o_t = self._target_vehicle_observation_network(vehicle_next_observations_np_array_list[vehicle_index])
+                # This stop_gradient prevents gradients to propagate into the target
+                # observation network. In addition, since the online policy network is
+                # evaluated at o_t, this also means the policy loss does not influence
+                # the observation network training.
+                o_t = tree.map_structure(tf.stop_gradient, o_t)
+
+                # Critic learning.
+                q_tm1 = self._vehicle_critic_network(o_tm1, transitions.action[: self._environment._config.vehicle_number * self._environment._vehicle_action_size])
+                q_t = self._target_vehicle_critic_network(o_t, vehicles_a_t)
+
+                # Critic loss.
+                vehicle_critic_loss = losses.categorical(q_tm1, transitions.reward[vehicle_index],
+                                                discount * transitions.discount, q_t)
+                vehicle_critic_loss = tf.reduce_mean(vehicle_critic_loss, axis=[0])
+                vehicle_critic_losses.append(vehicle_critic_loss)
+
+                # Actor learning
+                if vehicle_index == 0:
+                    dpg_a_t = self._vehicle_policy_network(o_t)
+                else:
+                    dpg_a_t = vehicles_a_t_list[0]
+                for i in range(self._environment._config.vehicle_number):
+                    if i != 0 and i != vehicle_index:
+                        dpg_a_t = tf.concat([dpg_a_t, vehicles_a_t_list[i]], axis=0)
+                    elif i != 0 and i == vehicle_index:
+                        dpg_a_t = tf.concat([dpg_a_t, self._vehicle_policy_network(o_t)], axis=0)
+                
+                dpg_z_t = self._vehicle_critic_network(o_t, dpg_a_t)
+                dpg_q_t = dpg_z_t.mean()
+
+                # Actor loss. If clipping is true use dqda clipping and clip the norm.
+                dqda_clipping = 1.0 if self._clipping else None
+                vehicle_policy_loss = losses.dpg(
+                    dpg_q_t,
+                    vehicles_a_t,
+                    tape=tape,
+                    dqda_clipping=dqda_clipping,
+                    clip_norm=self._clipping)
+                vehicle_policy_loss = tf.reduce_mean(vehicle_policy_loss, axis=[0])
+                vehicle_policy_losses.append(vehicle_policy_loss)
+            
+            """Compute the mean loss for the policy and critic of vehicles."""
+            vehicle_critic_loss = tf.reduce_mean(tf.stack(vehicle_critic_losses, axis=0), axis=0)
+            vehicle_policy_loss = tf.reduce_mean(tf.stack(vehicle_policy_losses, axis=0), axis=0)
+
+            o_tm1 = self._edge_observation_network(transitions.observation)
+            o_t = self._target_edge_observation_network(transitions.next_observation)
             # This stop_gradient prevents gradients to propagate into the target
             # observation network. In addition, since the online policy network is
             # evaluated at o_t, this also means the policy loss does not influence
@@ -226,56 +335,73 @@ class D3PGLearner(acme.Learner):
             o_t = tree.map_structure(tf.stop_gradient, o_t)
 
             # Critic learning.
-            q_tm1 = self._critic_network(o_tm1, transitions.action)
-            q_t = self._target_critic_network(o_t, self._target_policy_network(o_t))
+            a_t = self._target_edge_policy_network(o_t)
+            a_t = tf.concat([vehicles_a_t, a_t], axis=0)
+            q_tm1 = self._edge_critic_network(o_tm1, transitions.action)
+            q_t = self._target_edge_critic_network(o_t, a_t)
 
             # Critic loss.
-            critic_loss = losses.categorical(q_tm1, transitions.reward,
+            edge_critic_loss = losses.categorical(q_tm1, transitions.reward[-1],
                                             discount * transitions.discount, q_t)
-            critic_loss = tf.reduce_mean(critic_loss, axis=[0])
+            edge_critic_loss = tf.reduce_mean(edge_critic_loss, axis=[0])
 
             # Actor learning.
-            dpg_a_t = self._policy_network(o_t)
-            dpg_z_t = self._critic_network(o_t, dpg_a_t)
+            dpg_a_t = self._edge_policy_network(o_t)
+            dpg_a_t = tf.concat([vehicles_a_t, dpg_a_t], axis=0)
+            dpg_z_t = self._edge_critic_network(o_t, dpg_a_t)
             dpg_q_t = dpg_z_t.mean()
 
             # Actor loss. If clipping is true use dqda clipping and clip the norm.
             dqda_clipping = 1.0 if self._clipping else None
-            policy_loss = losses.dpg(
+            edge_policy_loss = losses.dpg(
                 dpg_q_t,
                 dpg_a_t,
                 tape=tape,
                 dqda_clipping=dqda_clipping,
                 clip_norm=self._clipping)
-            policy_loss = tf.reduce_mean(policy_loss, axis=[0])
+            edge_policy_loss = tf.reduce_mean(edge_policy_loss, axis=[0])
 
         # Get trainable variables.
-        policy_variables = self._policy_network.trainable_variables
-        critic_variables = (
+        vehicle_policy_variables = self._vehicle_policy_network.trainable_variables
+        vehicle_critic_variables = (
             # In this agent, the critic loss trains the observation network.
-            self._observation_network.trainable_variables +
-            self._critic_network.trainable_variables)
+            self._vehicle_observation_network.trainable_variables +
+            self._vehicle_critic_network.trainable_variables)
+
+        edge_policy_variables = self._edge_policy_network.trainable_variables
+        edge_critic_variables = (
+            # In this agent, the critic loss trains the observation network.
+            self._edge_observation_network.trainable_variables +
+            self._edge_critic_network.trainable_variables)
 
         # Compute gradients.
-        policy_gradients = tape.gradient(policy_loss, policy_variables)
-        critic_gradients = tape.gradient(critic_loss, critic_variables)
+        vehicle_policy_gradients = tape.gradient(vehicle_policy_loss, vehicle_policy_variables)
+        vehicle_critic_gradients = tape.gradient(vehicle_critic_loss, vehicle_critic_variables)
+        edge_policy_gradients = tape.gradient(edge_policy_loss, edge_policy_variables)
+        edge_critic_gradients = tape.gradient(edge_critic_loss, edge_critic_variables)
 
         # Delete the tape manually because of the persistent=True flag.
         del tape
 
         # Maybe clip gradients.
         if self._clipping:
-            policy_gradients = tf.clip_by_global_norm(policy_gradients, 40.)[0]
-            critic_gradients = tf.clip_by_global_norm(critic_gradients, 40.)[0]
+            vehicle_policy_gradients = tf.clip_by_global_norm(vehicle_policy_gradients, 40.)[0]
+            vehicle_critic_gradients = tf.clip_by_global_norm(vehicle_critic_gradients, 40.)[0]
+            edge_policy_gradients = tf.clip_by_global_norm(edge_policy_gradients, 40.)[0]
+            edge_critic_gradients = tf.clip_by_global_norm(edge_critic_gradients, 40.)[0]
 
         # Apply gradients.
-        self._policy_optimizer.apply(policy_gradients, policy_variables)
-        self._critic_optimizer.apply(critic_gradients, critic_variables)
+        self._vehicle_policy_optimizer.apply(vehicle_policy_gradients, vehicle_policy_variables)
+        self._vehicle_critic_optimizer.apply(vehicle_critic_gradients, vehicle_critic_variables)
+        self._edge_policy_optimizer.apply(edge_policy_gradients, edge_policy_variables)
+        self._edge_critic_optimizer.apply(edge_critic_gradients, edge_critic_variables)
 
         # Losses to track.
         return {
-            'critic_loss': critic_loss,
-            'policy_loss': policy_loss,
+            'vehicle_policy_loss': vehicle_policy_loss,
+            'vehicle_critic_loss': vehicle_critic_loss,
+            'edge_policy_loss': edge_policy_loss,
+            'edge_critic_loss': edge_critic_loss,
         }
 
     def step(self):
