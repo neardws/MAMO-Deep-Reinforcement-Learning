@@ -27,17 +27,25 @@ class D3PGLearner(acme.Learner):
 
     def __init__(
         self,
-        policy_network: snt.Module,
-        critic_network: snt.Module,
-        target_policy_network: snt.Module,
-        target_critic_network: snt.Module,
+        vehicle_policy_network: snt.Module,
+        vehicel_critic_network: snt.Module,
+        edge_policy_network: snt.Module,
+        edge_critic_network: snt.Module,
+        target_vehicle_policy_network: snt.Module,
+        target_vehicle_critic_network: snt.Module,
+        target_edge_policy_network: snt.Module,
+        target_edge_critic_network: snt.Module,
         discount: float,
         target_update_period: int,
         dataset_iterator: Iterator[reverb.ReplaySample],
-        observation_network: types.TensorTransformation = lambda x: x,
-        target_observation_network: types.TensorTransformation = lambda x: x,
-        policy_optimizer: Optional[snt.Optimizer] = None,
-        critic_optimizer: Optional[snt.Optimizer] = None,
+        vehicle_observation_network: types.TensorTransformation = lambda x: x,
+        target_vehicle_observation_network: types.TensorTransformation = lambda x: x,
+        edge_observation_network: types.TensorTransformation = lambda x: x,
+        target_edge_observation_network: types.TensorTransformation = lambda x: x,
+        vehicle_policy_optimizer: Optional[snt.Optimizer] = None,
+        vehicle_critic_optimizer: Optional[snt.Optimizer] = None,
+        edge_policy_optimizer: Optional[snt.Optimizer] = None,
+        edge_critic_optimizer: Optional[snt.Optimizer] = None,
         clipping: bool = True,
         counter: Optional[counting.Counter] = None,
         logger: Optional[loggers.Logger] = None,
@@ -69,15 +77,21 @@ class D3PGLearner(acme.Learner):
         """
 
         # Store online and target networks.
-        self._policy_network = policy_network
-        self._critic_network = critic_network
-        self._target_policy_network = target_policy_network
-        self._target_critic_network = target_critic_network
+        self._vehicle_policy_network = vehicle_policy_network
+        self._vehicle_critic_network = vehicel_critic_network
+        self._edge_policy_network = edge_policy_network
+        self._edge_critic_network = edge_critic_network
+
+        self._target_vehicle_policy_network = target_vehicle_policy_network
+        self._target_vehicle_critic_network = target_vehicle_critic_network
+        self._target_edge_policy_network = target_edge_policy_network
+        self._target_edge_critic_network = target_edge_critic_network
 
         # Make sure observation networks are snt.Module's so they have variables.
-        self._observation_network = tf2_utils.to_sonnet_module(observation_network)
-        self._target_observation_network = tf2_utils.to_sonnet_module(
-            target_observation_network)
+        self._vehicle_observation_network = tf2_utils.to_sonnet_module(vehicle_observation_network)
+        self._target_vehicle_observation_network = tf2_utils.to_sonnet_module(target_vehicle_observation_network)
+        self._edge_observation_network = tf2_utils.to_sonnet_module(edge_observation_network)
+        self._target_edge_observation_network = tf2_utils.to_sonnet_module(target_edge_observation_network)
 
         # General learner book-keeping and loggers.
         self._counter = counter or counting.Counter()
@@ -95,15 +109,26 @@ class D3PGLearner(acme.Learner):
         self._iterator = dataset_iterator
 
         # Create optimizers if they aren't given.
-        self._critic_optimizer = critic_optimizer or snt.optimizers.Adam(1e-4)
-        self._policy_optimizer = policy_optimizer or snt.optimizers.Adam(1e-4)
+        self._vehicle_policy_optimizer = vehicle_policy_optimizer or snt.optimizers.Adam(1e-4)
+        self._vehicle_critic_optimizer = vehicle_critic_optimizer or snt.optimizers.Adam(1e-4)
+
+        self._edge_policy_optimizer = edge_policy_optimizer or snt.optimizers.Adam(1e-4)
+        self._edge_critic_optimizer = edge_critic_optimizer or snt.optimizers.Adam(1e-4)
 
         # Expose the variables.
-        policy_network_to_expose = snt.Sequential(
-            [self._target_observation_network, self._target_policy_network])
+        vehicle_policy_network_to_expose = snt.Sequential(
+            [self._target_vehicel_observation_network, self._target_vehicle_policy_network])
+        edge_policy_network_to_expose = snt.Sequential(
+            [self._target_edge_observation_network, self._target_edge_policy_network])
+
+        # Create saver.
+        self._checkpoint = checkpoint
+        self._saver = tf2_savers.Saver(self._variables)
         self._variables = {
-            'critic': self._target_critic_network.variables,
-            'policy': policy_network_to_expose.variables,
+            'vehicle_critic': self._target_vehicle_critic_network.variables,
+            'vehicle_policy': vehicle_policy_network_to_expose.variables,
+            'edge_critic': self._target_edge_critic_network.variables,
+            'edge_policy': edge_policy_network_to_expose.variables,
         }
 
         # Create a checkpointer and snapshotter objects.
@@ -115,22 +140,37 @@ class D3PGLearner(acme.Learner):
                 subdirectory='d3pg_learner',
                 objects_to_save={
                     'counter': self._counter,
-                    'policy': self._policy_network,
-                    'critic': self._critic_network,
-                    'observation': self._observation_network,
-                    'target_policy': self._target_policy_network,
-                    'target_critic': self._target_critic_network,
-                    'target_observation': self._target_observation_network,
-                    'policy_optimizer': self._policy_optimizer,
-                    'critic_optimizer': self._critic_optimizer,
+
+                    'vehicle_policy': self._vehicle_policy_network,
+                    'vehicle_critic': self._vehicle_critic_network,
+                    'vehicle_observation': self._vehicle_observation_network,
+                    'target_vehicle_policy': self._target_vehicle_policy_network,
+                    'target_vehicle_critic': self._target_vehicle_critic_network,
+                    'target_vehicle_observation': self._target_vehicle_observation_network,
+                    'vehicle_policy_optimizer': self._vehicle_policy_optimizer,
+                    'vehicle_critic_optimizer': self._vehicle_critic_optimizer,
+
+                    'edge_policy': self._edge_policy_network,
+                    'edge_critic': self._edge_critic_network,
+                    'edge_observation': self._edge_observation_network,
+                    'target_edge_policy': self._target_edge_policy_network,
+                    'target_edge_critic': self._target_edge_critic_network,
+                    'target_edge_observation': self._target_edge_observation_network,
+                    'edge_policy_optimizer': self._edge_policy_optimizer,
+                    'edge_critic_optimizer': self._edge_critic_optimizer,
+
                     'num_steps': self._num_steps,
                 })
-            critic_mean = snt.Sequential(
-                [self._critic_network, acme_nets.StochasticMeanHead()])
+            vehicle_critic_mean = snt.Sequential(
+                [self._vehicle_critic_network, acme_nets.StochasticMeanHead()])
+            edge_critic_mean = snt.Sequential(
+                [self._edge_critic_network, acme_nets.StochasticMeanHead()])
             self._snapshotter = tf2_savers.Snapshotter(
                 objects_to_save={
-                    'policy': self._policy_network,
-                    'critic': critic_mean,
+                    'vehicle_policy': self._vehicle_policy_network,
+                    'vehicle_critic': vehicle_critic_mean,
+                    'edge_policy': self._edge_policy_network,
+                    'edge_critic': edge_critic_mean,
                 })
 
         # Do not record timestamps until after the first learning step is done.
@@ -142,14 +182,20 @@ class D3PGLearner(acme.Learner):
     def _step(self) -> Dict[str, tf.Tensor]:
         # Update target network
         online_variables = (
-            *self._observation_network.variables,
-            *self._critic_network.variables,
-            *self._policy_network.variables,
+            *self._vehicle_observation_network.variables,
+            *self._vehicle_critic_network.variables,
+            *self._vehicle_policy_network.variables,
+            *self._edge_observation_network.variables,
+            *self._edge_critic_network.variables,
+            *self._edge_policy_network.variables,
         )
         target_variables = (
-            *self._target_observation_network.variables,
-            *self._target_critic_network.variables,
-            *self._target_policy_network.variables,
+            *self._target_vehicle_observation_network.variables,
+            *self._target_vehicle_critic_network.variables,
+            *self._target_vehicle_policy_network.variables,
+            *self._target_edge_observation_network.variables,
+            *self._target_edge_critic_network.variables,
+            *self._target_edge_policy_network.variables,
         )
 
         # Make online -> target network update ops.

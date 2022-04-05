@@ -326,21 +326,34 @@ class D3PG(agent.Agent):
         checkpoint: bool = False,
     ):
         """Creates an instance of the learner."""
-        # TODO: need to update after modifying the learner.
         # The learner updates the parameters (and initializes them).
         return learning.D3PGLearner(
-            policy_network=online_networks.policy_network,
-            critic_network=online_networks.critic_network,
-            observation_network=online_networks.observation_network,
-            target_policy_network=target_networks.policy_network,
-            target_critic_network=target_networks.critic_network,
-            target_observation_network=target_networks.observation_network,
-            policy_optimizer=self._config.policy_optimizer,
-            critic_optimizer=self._config.critic_optimizer,
-            clipping=self._config.clipping,
+            vehicle_policy_network=online_networks.vehicle_policy_network,
+            vehicle_critic_network=online_networks.vehicle_critic_network,
+            edge_policy_network=online_networks.edge_policy_network,
+            edge_critic_network=online_networks.edge_critic_network,
+
+            target_vehicle_policy_network=target_networks.vehicle_policy_network,
+            target_vehicle_critic_network=target_networks.vehicle_critic_network,
+            target_edge_policy_network=target_networks.edge_policy_network,
+            target_edge_critic_network=target_networks.edge_critic_network,
+            
             discount=self._config.discount,
             target_update_period=self._config.target_update_period,
             dataset_iterator=dataset,
+
+            vehicle_observation_network=online_networks.vehicle_observation_network,
+            target_vehicle_observation_network=target_networks.vehicle_observation_network,
+            edge_observation_network=online_networks.edge_observation_network,
+            target_edge_observation_network=target_networks.edge_observation_network,
+
+            vehicle_policy_optimizer=self._config.vehicle_policy_optimizer,
+            vehicle_critic_optimizer=self._config.vehicle_critic_optimizer,
+            edge_policy_optimizer=self._config.edge_policy_optimizer,
+            edge_critic_optimizer=self._config.edge_critic_optimizer,
+
+            clipping=self._config.clipping,
+
             counter=counter,
             logger=logger,
             checkpoint=checkpoint,
