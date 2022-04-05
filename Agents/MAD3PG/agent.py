@@ -5,6 +5,7 @@ import dataclasses
 from typing import Iterator, List, Optional, Tuple
 from acme import adders
 from acme import core
+from Environments.environment import vehicularNetworkEnv
 from acme import datasets
 from Environments import specs
 from acme import types
@@ -51,15 +52,20 @@ class D3PGConfig:
         checkpoint: boolean indicating whether to checkpoint the learner.
     """
     environment_spec: Optional[specs.EnvironmentSpec] = None
-    policy_network: Optional[snt.Module] = None
-    critic_network: Optional[snt.Module] = None
-    observation_network: types.TensorTransformation = tf.identity
+    vehicle_policy_network: Optional[snt.Module] = None
+    vehicle_critic_network: Optional[snt.Module] = None
+    vehicle_observation_network: types.TensorTransformation = tf.identity
+    edge_policy_network: Optional[snt.Module] = None
+    edge_critic_network: Optional[snt.Module] = None
+    edge_observation_network: types.TensorTransformation = tf.identity
     discount: float = 0.99
     batch_size: int = 256
     prefetch_size: int = 4
     target_update_period: int = 100
-    policy_optimizer: Optional[snt.Optimizer] = None
-    critic_optimizer: Optional[snt.Optimizer] = None
+    vehicle_policy_optimizer: Optional[snt.Optimizer] = None
+    vehicle_critic_optimizer: Optional[snt.Optimizer] = None
+    edge_policy_optimizer: Optional[snt.Optimizer] = None
+    edge_critic_optimizer: Optional[snt.Optimizer] = None
     min_replay_size: int = 1000
     max_replay_size: int = 1000000
     samples_per_insert: Optional[float] = 32.0
@@ -76,72 +82,90 @@ class D3PGConfig:
 class D3PGNetworks:
     """Structure containing the networks for D3PG."""
 
-    policy_network: types.TensorTransformation
-    critic_network: types.TensorTransformation
-    observation_network: types.TensorTransformation
+    vehicle_policy_network: types.TensorTransformation
+    vehicle_critic_network: types.TensorTransformation
+    vehicle_observation_network: types.TensorTransformation
+
+    edge_policy_network: types.TensorTransformation
+    edge_critic_network: types.TensorTransformation
+    edge_observation_network: types.TensorTransformation
 
     def __init__(
         self,
-        policy_network: types.TensorTransformation,
-        critic_network: types.TensorTransformation,
-        observation_network: types.TensorTransformation,
+        vehicle_policy_network: types.TensorTransformation,
+        vehicle_critic_network: types.TensorTransformation,
+        vehicle_observation_network: types.TensorTransformation,
+
+        edge_policy_network: types.TensorTransformation,
+        edge_critic_network: types.TensorTransformation,
+        edge_observation_network: types.TensorTransformation,
     ):
         # This method is implemented (rather than added by the dataclass decorator)
         # in order to allow observation network to be passed as an arbitrary tensor
         # transformation rather than as a snt Module.
-        self.policy_network = policy_network
-        self.critic_network = critic_network
-        self.observation_network = utils.to_sonnet_module(observation_network)
+        self.vehicle_policy_network = vehicle_policy_network
+        self.vehicle_critic_network = vehicle_critic_network
+        self.vehicle_observation_network = utils.to_sonnet_module(vehicle_observation_network)
+
+        self.edge_policy_network = edge_policy_network
+        self.edge_critic_network = edge_critic_network
+        self.edge_observation_network = utils.to_sonnet_module(edge_observation_network)
 
     def init(
         self, 
         environment_spec: specs.EnvironmentSpec,
-        type: str,   # denoted by the type of network, i.e. 'edge' or 'vehicle' 
     ):
         """Initialize the networks given an environment spec."""
         # Get observation and action specs.
-        if type == 'edge':
-            observation_spec = environment_spec.edge_observations
-            action_spec = environment_spec.edge_actions
-        elif type == 'vehicle':
-            observation_spec = environment_spec.vehicle_observations
-            action_spec = environment_spec.vehicle_actions
-        else:
-            raise ValueError('type must be either "edge" or "vehicle"')
-            # act_spec = environment_spec.actions
-            # obs_spec = environment_spec.observations
+        vehicle_observation_spec = environment_spec.vehicle_observations
+        vehicle_action_spec = environment_spec.vehicle_actions
+        edge_observation_spec = environment_spec.edge_observations
+        edge_action_spec = environment_spec.edge_actions
 
         # Create variables for the observation net and, as a side-effect, get a
         # spec describing the embedding space.
-        emb_spec = utils.create_variables(self.observation_network, [observation_spec])
+        vehicle_emb_spec = utils.create_variables(self.vehicle_observation_network, [vehicle_observation_spec])
+        edge_emb_spec = utils.create_variables(self.edge_observation_network, [edge_observation_spec])
 
         # Create variables for the policy and critic nets.
-        _ = utils.create_variables(self.policy_network, [emb_spec])
-        _ = utils.create_variables(self.critic_network, [emb_spec, action_spec])
+        _ = utils.create_variables(self.vehicle_policy_network, [vehicle_emb_spec])
+        _ = utils.create_variables(self.vehicle_critic_network, [vehicle_emb_spec, vehicle_action_spec])
+
+        _ = utils.create_variables(self.edge_policy_network, [edge_emb_spec])
+        _ = utils.create_variables(self.edge_critic_network, [edge_emb_spec, edge_action_spec])
 
     def make_policy(
         self,
         environment_spec: specs.EnvironmentSpec,
         sigma: float = 0.0,
-    ) -> snt.Module:
+    ) -> Tuple[snt.Module, snt.Module]:
         """Create a single network which evaluates the policy."""
         # Stack the observation and policy networks.
-        stack = [
-            self.observation_network,
-            self.policy_network,
+        vehicle_stack = [
+            self.vehicle_observation_network,
+            self.vehicle_policy_network,
+        ]
+
+        edge_stack = [
+            self.edge_observation_network,
+            self.edge_policy_network,
         ]
 
         # If a stochastic/non-greedy policy is requested, add Gaussian noise on
         # top to enable a simple form of exploration.
         # TODO: Refactor this to remove it from the class.
         if sigma > 0.0:
-            stack += [
+            vehicle_stack += [
                 network_utils.ClippedGaussian(sigma),
-                network_utils.ClipToSpec(environment_spec.actions),
+                network_utils.ClipToSpec(environment_spec.vehicle_actions),
+            ]
+            edge_stack += [
+                network_utils.ClippedGaussian(sigma),
+                network_utils.ClipToSpec(environment_spec.edge_actions),
             ]
 
         # Return a network which sequentially evaluates everything in the stack.
-        return snt.Sequential(stack)
+        return snt.Sequential(vehicle_stack), snt.Sequential(edge_stack)
 
 
 class D3PG(agent.Agent):
@@ -161,53 +185,46 @@ class D3PG(agent.Agent):
             config: Configuration for the agent.
         """
         self._config = config
-        # Create the Builder object which will internally create agent components.
-        
 
-        # TODO: pass the network dataclass in directly.
         online_networks = D3PGNetworks(
-            policy_network=policy_network,
-            critic_network=critic_network,
-            observation_network=observation_network)
+            vehicle_policy_network=self.config.vehicle_policy_network,
+            vehicle_critic_network=self.config.vehicle_critic_network,
+            vehicle_observation_network=self.config.vehicle_observation_network,
+            edge_policy_network=self.config.edge_policy_network,
+            edge_critic_network=self.config.edge_critic_network,
+            edge_observation_network=self.config.edge_observation_network,
+        )
 
         # Target networks are just a copy of the online networks.
         target_networks = copy.deepcopy(online_networks)
 
         # Initialize the networks.
-        online_networks.init(environment_spec)
-        target_networks.init(environment_spec)
-
-        # TODO: either make this Dataclass or pass only one struct.
-        # The network struct passed to make_learner is just a tuple for the
-        # time-being (for backwards compatibility).
-        networks = (online_networks, target_networks)
+        online_networks.init(self._config.environment_spec)
+        target_networks.init(self._config.environment_spec)
 
         # Create the behavior policy.
-        policy_network = online_networks.make_policy(environment_spec, sigma)
+        policy_network = online_networks.make_policy(self._config.environment_spec, self._config.sigma)
 
         # Create the replay server and grab its address.
-        replay_tables = builder.make_replay_tables(environment_spec)
+        replay_tables = self.make_replay_tables(self._config.environment_spec)
         replay_server = reverb.Server(replay_tables, port=None)
         replay_client = reverb.Client(f'localhost:{replay_server.port}')
 
         # Create actor, dataset, and learner for generating, storing, and consuming
         # data respectively.
-        adder = builder.make_adder(replay_client)
-        actor = builder.make_actor(policy_network, adder)
-        dataset = builder.make_dataset_iterator(replay_client)
-        learner = builder.make_learner(networks, dataset, counter, logger, checkpoint)
+        adder = self.make_adder(replay_client)
+        actor = self.make_actor(policy_network, adder)
+        dataset = self.make_dataset_iterator(replay_client)
+        learner = self.make_learner(online_networks, target_networks, dataset, self._config.counter, self._config.logger, self._config.environment_speccheckpoint)
 
         super().__init__(
             actor=actor,
             learner=learner,
-            min_observations=max(batch_size, min_replay_size),
-            observations_per_step=float(batch_size) / samples_per_insert)
+            min_observations=max(self._config.batch_size, self._config.min_replay_size),
+            observations_per_step=float(self._config.batch_size) / self._config.samples_per_insert)
 
         # Save the replay so we don't garbage collect it.
         self._replay_server = replay_server
-
-    def __init__(self, config: D3PGConfig):
-        self._config = config
 
     def make_replay_tables(
         self,
@@ -267,7 +284,9 @@ class D3PG(agent.Agent):
 
     def make_actor(
         self,
-        policy_network: snt.Module,
+        vehicle_policy_network: snt.Module,
+        edge_policy_network: snt.Module,
+        environment: vehicularNetworkEnv,
         adder: Optional[adders.Adder] = None,
         variable_source: Optional[core.VariableSource] = None,
     ):
@@ -276,7 +295,8 @@ class D3PG(agent.Agent):
             # Create the variable client responsible for keeping the actor up-to-date.
             variable_client = variable_utils.VariableClient(
                 client=variable_source,
-                variables={'policy': policy_network.variables},
+                variables={'vehicle_policy': vehicle_policy_network.variables,
+                            'edge_policy': edge_policy_network.variables},
                 update_period=1000,
             )
 
@@ -289,22 +309,24 @@ class D3PG(agent.Agent):
 
         # Create the actor which defines how we take actions.
         return actors.FeedForwardActor(
-            policy_network=policy_network,
+            vehicle_policy_network=vehicle_policy_network,
+            edge_policy_network=edge_policy_network,
+            environment=environment,
             adder=adder,
             variable_client=variable_client,
         )
 
     def make_learner(
         self,
-        networks: Tuple[D3PGNetworks, D3PGNetworks],
+        online_networks: D3PGNetworks, 
+        target_networks: D3PGNetworks,
         dataset: Iterator[reverb.ReplaySample],
         counter: Optional[counting.Counter] = None,
         logger: Optional[loggers.Logger] = None,
         checkpoint: bool = False,
     ):
         """Creates an instance of the learner."""
-        online_networks, target_networks = networks
-
+        # TODO: need to update after modifying the learner.
         # The learner updates the parameters (and initializes them).
         return learning.D3PGLearner(
             policy_network=online_networks.policy_network,
