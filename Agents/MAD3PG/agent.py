@@ -119,8 +119,10 @@ class D3PGNetworks:
         # Get observation and action specs.
         vehicle_observation_spec = environment_spec.vehicle_observations
         vehicle_action_spec = environment_spec.vehicle_actions
+        critic_vehicle_action_spec = environment_spec.critic_vehicle_actions
         edge_observation_spec = environment_spec.edge_observations
         edge_action_spec = environment_spec.edge_actions
+        critic_edge_action_spec = environment_spec.critic_edge_actions
 
         # Create variables for the observation net and, as a side-effect, get a
         # spec describing the embedding space.
@@ -129,10 +131,10 @@ class D3PGNetworks:
 
         # Create variables for the policy and critic nets.
         _ = utils.create_variables(self.vehicle_policy_network, [vehicle_emb_spec])
-        _ = utils.create_variables(self.vehicle_critic_network, [vehicle_emb_spec, vehicle_action_spec])
+        _ = utils.create_variables(self.vehicle_critic_network, [vehicle_emb_spec, critic_vehicle_action_spec])
 
         _ = utils.create_variables(self.edge_policy_network, [edge_emb_spec])
-        _ = utils.create_variables(self.edge_critic_network, [edge_emb_spec, edge_action_spec])
+        _ = utils.create_variables(self.edge_critic_network, [edge_emb_spec, critic_edge_action_spec])
 
     def make_policy(
         self,

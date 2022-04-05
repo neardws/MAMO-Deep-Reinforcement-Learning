@@ -166,7 +166,8 @@ class vehicularNetworkEnv(dm_env.Environment):
         )
 
         self._vehicle_action_size, self._edge_action_size, self._action_size, \
-            self._vehicle_observation_size, self._edge_observation_size, self._observation_size, self._reward_size = \
+            self._vehicle_observation_size, self._edge_observation_size, self._observation_size, \
+            self._reward_size, self._vehicle_critic_network_action_size, self._edge_critic_network_action_size = \
                 self._define_size_of_spaces()
     
         """To record the timeliness, consistency, redundancy, and cost of views."""
@@ -186,7 +187,7 @@ class vehicularNetworkEnv(dm_env.Environment):
 
         self._reset_next_step: bool = True
 
-    def _define_size_of_spaces(self) -> Tuple[int, int, int, int, int, int, int]:
+    def _define_size_of_spaces(self) -> Tuple[int, int, int, int, int, int, int, int, int]:
         """
         Defined the shape of the action space.
         """
@@ -216,9 +217,14 @@ class vehicularNetworkEnv(dm_env.Environment):
         reward[0:vehicle_number] are the vehicle rewards.
         """
         reward_size: int = self._config.vehicle_number + 1 + 1
+        
+        """Defined the shape of the action space in critic network."""
+        vehicle_critic_network_action_size: int = self._config.vehicle_number * vehicle_action_size
+        edge_critic_network_action_size: int = self._config.vehicle_number * vehicle_action_size + edge_action_size
 
         return vehicle_action_size, edge_action_size, action_size, \
-            vehicle_observation_size, edge_observation_size, observation_size, reward_size
+            vehicle_observation_size, edge_observation_size, observation_size, \
+            reward_size, vehicle_critic_network_action_size, edge_critic_network_action_size
 
 
     def reset(self) -> dm_env.TimeStep:
@@ -559,8 +565,18 @@ class vehicularNetworkEnv(dm_env.Environment):
         return specs.BoundedArray(
             shape=(self._vehicle_action_size,),
             dtype=np.float,
-            minimum=np.zeros((self.vehicle_action_size,)),
-            maximum=np.ones((self.vehicle_action_size,))
+            minimum=np.zeros((self._vehicle_action_size,)),
+            maximum=np.ones((self._vehicle_action_size,))
+        )
+
+    """Define the action spaces of vehicle in critic network."""
+    def vehicle_critic_network_action_spec(self) -> specs.BoundedArray:
+        """Define and return the action space."""
+        return specs.BoundedArray(
+            shape=(self._vehicle_critic_network_action_size,),
+            dtype=np.float,
+            minimum=np.zeros((self._vehicle_critic_network_action_size,)),
+            maximum=np.ones((self._vehicle_critic_network_action_size,))
         )
     
     """Define the observation spaces of edge."""
@@ -573,6 +589,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             maximum=np.ones((self._edge_observation_size,))
         )
 
+    """Define the action spaces of edge."""
     def edge_action_spec(self) -> specs.BoundedArray:
         """Define and return the action space."""
         return specs.BoundedArray(
@@ -580,6 +597,16 @@ class vehicularNetworkEnv(dm_env.Environment):
             dtype=np.float,
             minimum=np.zeros((self._edge_action_size,)),
             maximum=np.ones((self._edge_action_size,))
+        )
+
+    """Define the action spaces of edge in critic network."""
+    def edge_critic_network_action_spec(self) -> specs.BoundedArray:
+        """Define and return the action space."""
+        return specs.BoundedArray(
+            shape=(self._edge_critic_network_action_size,),
+            dtype=np.float,
+            minimum=np.zeros((self._edge_critic_network_action_size,)),
+            maximum=np.ones((self._edge_critic_network_action_size,))
         )
 
     """Define the gloabl observation spaces."""

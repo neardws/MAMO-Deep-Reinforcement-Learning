@@ -10,6 +10,7 @@ from typing import NamedTuple
 from acme.types import NestedSpec
 import dm_env
 from dm_env import specs
+from environment import vehicularNetworkEnv
 
 Array = specs.Array
 BoundedArray = specs.BoundedArray
@@ -25,10 +26,12 @@ class EnvironmentSpec(NamedTuple):
   vehicle_actions: NestedSpec
   edge_actions: NestedSpec
   rewards: NestedSpec
+  critic_vehicle_actions: NestedSpec
+  critic_edge_actions: NestedSpec
   discounts: NestedSpec
 
 
-def make_environment_spec(environment: dm_env.Environment) -> EnvironmentSpec:
+def make_environment_spec(environment: vehicularNetworkEnv) -> EnvironmentSpec:
   """Returns an `EnvironmentSpec` describing values used by an environment."""
   return EnvironmentSpec(
       observations=environment.observation_spec(),
@@ -38,4 +41,6 @@ def make_environment_spec(environment: dm_env.Environment) -> EnvironmentSpec:
       vehicle_actions=environment.vehicle_action_spec(),
       edge_actions=environment.edge_action_spec(),
       rewards=environment.reward_spec(),
+      critic_vehicle_actions=environment.vehicle_critic_network_action_spec(),
+      critic_edge_actions=environment.edge_critic_network_action_spec(),
       discounts=environment.discount_spec())
