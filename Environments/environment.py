@@ -3,19 +3,10 @@ import dm_env
 import dataclasses
 from dm_env import specs
 import numpy as np
-from dataStruct import location, timeSlots
-from dataStruct import informationList
-from dataStruct import applicationList
-from dataStruct import edge
-from dataStruct import informationRequirements
-from dataStruct import vehicleList
-from dataStruct import viewList
-from dataStruct import vehicleAction
-from dataStruct import edgeAction
-from dataStruct import informationPacket
-from utilities import sensingAndQueuing
-from utilities import v2iTransmission
+from Environments.dataStruct import applicationList, edge, edgeAction, informationList, informationPacket, informationRequirements, location, timeSlots, vehicleAction, vehicleList, viewList  
 from typing import List, Tuple
+
+from Environments.utilities import sensingAndQueuing, v2iTransmission
 
 @dataclasses.dataclass
 class vehicularNetworkEnvConfig:
@@ -30,7 +21,7 @@ class vehicularNetworkEnvConfig:
     information_number: int = 50
     information_list_seed: int = 0
     data_size_low_bound: float = 100      # Bytes
-    data_size_high_bound: float = 1 * 1024 * 1024    # Bytes
+    data_size_up_bound: float = 1 * 1024 * 1024    # Bytes
     data_types_number: int = 20
     update_interval_low_bound: int = 1
     update_interval_up_bound: int = 10
@@ -78,7 +69,7 @@ class vehicularNetworkEnvConfig:
     """V2I Transmission related."""
     white_gaussian_noise: int = -90  # dBm
     mean_channel_fading_gain: float = 2.0 
-    second_moment_channel_fadding_gain: float = 0.4
+    second_moment_channel_fading_gain: float = 0.4
     path_loss_exponent: int = 3
     SNR_target: int = 1 # [1, 10]
     probabiliity_threshold: float = 0.9
@@ -100,11 +91,12 @@ class vehicularNetworkEnv(dm_env.Environment):
         self._time_slots: timeSlots = timeSlots(
             start=self._config.time_slot_start,
             end=self._config.time_slot_end,
-            length=self._config.time_slot_length,
+            slot_length=self._config.time_slot_length,
         )
 
         self._vehicle_list: vehicleList = vehicleList(
             number=self._config.vehicle_number,
+            time_slots=self._time_slots,
             trajectories_file_name=self._config.trajectories_file_name,
             information_number=self._config.information_number,
             sensed_information_number=self._config.sensed_information_number,
@@ -129,7 +121,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             number=self._config.information_number,
             seed=self._config.information_list_seed,
             data_size_low_bound=self._config.data_size_low_bound,
-            data_size_high_bound=self._config.data_size_high_bound,
+            data_size_up_bound=self._config.data_size_up_bound,
             data_types_number=self._config.data_types_number,
             update_interval_low_bound=self._config.update_interval_low_bound,
             update_interval_up_bound=self._config.update_interval_up_bound,
@@ -137,14 +129,14 @@ class vehicularNetworkEnv(dm_env.Environment):
             edge_node=self._edge_node,
             additive_white_gaussian_noise=self._config.white_gaussian_noise,
             mean_channel_fading_gain=self._config.mean_channel_fading_gain,
-            second_moment_channel_fadding_gain=self._config.second_moment_channel_fadding_gain,
+            second_moment_channel_fading_gain=self._config.second_moment_channel_fading_gain,
             path_loss_exponent=self._config.path_loss_exponent,
         )
 
         self._application_list: applicationList = applicationList(
             number=self._config.application_number,
             views_per_application=self._config.views_per_application,
-            information_list=self._information_list,
+            view_number=self._config.view_number,
             seed=self._config.application_list_seed,
         )
 
@@ -159,9 +151,9 @@ class vehicularNetworkEnv(dm_env.Environment):
             time_slots=self._time_slots,
             max_application_number=self._config.max_application_number,
             min_application_number=self._config.min_application_number,
-            application=self._application_list,
-            view=self._view_list,
-            information=self._information_list,
+            application_list=self._application_list,
+            view_list=self._view_list,
+            information_list=self._information_list,
             seed=self._config.information_requirements_seed,
         )
 
@@ -178,7 +170,7 @@ class vehicularNetworkEnv(dm_env.Environment):
 
         self._reward_history: List[float] = []
 
-        self._reward: np.array = np.zeros(self._reward_size)
+        self._reward: np.ndarray = np.zeros(self._reward_size)
 
         self._information_in_edge: List[List[informationPacket]] = []
 
@@ -240,7 +232,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         self._reset_next_step = False
         return dm_env.restart(self._observation())
 
-    def step(self, action: np.array) -> dm_env.TimeStep:
+    def step(self, action: np.ndarray) -> dm_env.TimeStep:
         """Run one timestep of the environment's dynamics. When end of
         episode is reached, you are responsible for calling `reset()`
         to reset this environment's state.
@@ -264,7 +256,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             vehicle_actions=vehicle_actions,
         )
         self._reward[-1] = baseline_reward
-        for i in range(self._vehicle_number):
+        for i in range(self._config.vehicle_number):
             information_objects_ordered_by_views = self.compute_information_objects(
                 views_required_number=views_required_number,
                 information_type_required_by_views_at_now=information_type_required_by_views_at_now,
@@ -298,7 +290,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             return dm_env.termination(observation=self._observation(), reward=self._reward)
         return dm_env.transition(observation=self._observation(), reward=self._reward)
 
-    def transform_action_array_to_actions(self, action: np.array) -> Tuple[int, List[List[int]], List[vehicleAction], edgeAction]:
+    def transform_action_array_to_actions(self, action: np.ndarray) -> Tuple[int, List[List[int]], List[vehicleAction], edgeAction]:
         """Transform the action array to the actions of vehicles and the edge node.
         Args:
             action: the action of the agent.
@@ -319,14 +311,15 @@ class vehicularNetworkEnv(dm_env.Environment):
         for i in range(self._vehicle_number):
             vehicle_actions.append(
                 vehicleAction.generate_from_np_array(
-                    vehicle_no=i,
+                    vehicle_index=i,
                     now_time=self._time_slots.now(),
                     vehicle_list=self._vehicle_list,
+                    information_list=self._information_list,
                     sensed_information_number=self._config.sensed_information_number,
                     network_output=vhielce_action_array[i * self._vehicle_action_size: (i + 1) * self._vehicle_action_size],
                     white_gaussian_noise=self._config.white_gaussian_noise,
                     mean_channel_fading_gain=self._config.mean_channel_fading_gain,
-                    second_moment_channel_fadding_gain=self._config.second_moment_channel_fadding_gain,
+                    second_moment_channel_fading_gain=self._config.second_moment_channel_fading_gain,
                     edge_location=self._edge_node.get_edge_location(),
                     path_loss_exponent=self._config.path_loss_exponent,
                     SNR_target=self._config.SNR_target,
@@ -351,17 +344,17 @@ class vehicularNetworkEnv(dm_env.Environment):
     def compute_information_objects(
         self, 
         views_required_number: int,
-        information_type_required_by_views_at_now: list,
-        vehicle_actions: list,
+        information_type_required_by_views_at_now: List[List[int]],
+        vehicle_actions: List[vehicleAction],
         edge_action: edgeAction,
-        vehicle_no: int = -1) -> List[List[informationPacket]]:
+        vehicle_index: int = -1) -> List[List[informationPacket]]:
         """Compute the reward.
         Args:
             views_required_number: the number of views required by applications.
             information_type_required_by_views_at_now: the information type required by the views.
             vehicle_actions: the actions of the vehicle.
             edge_action: the action of the edge node.
-            vehicle_no: the index of the vehicle which do nothing, i.e., its action is null.
+            vehicle_index: the index of the vehicle which do nothing, i.e., its action is null.
                 the default value is -1, which means no vehicles do nothing.
         Returns:
             reward: the reward of the vehicle.
@@ -373,7 +366,7 @@ class vehicularNetworkEnv(dm_env.Environment):
 
         for i in range(self._vehicle_number):
             
-            if i == vehicle_no:     # the vehicle do nothing
+            if i == vehicle_index:     # the vehicle do nothing
                 continue
             
             sensing_and_queuing = sensingAndQueuing(
@@ -395,9 +388,10 @@ class vehicularNetworkEnv(dm_env.Environment):
                 arrival_moments=arrival_moments,
                 queuing_times=queuing_times,
                 white_gaussian_noise=self._config.white_gaussian_noise,
-                mean_channel_fadding_gain=self.mean_channel_fadding_gain,
-                second_moment_channel_fadding_gain=self.second_moment_channel_fadding_gain,
+                mean_channel_fading_gain=self.mean_channel_fading_gain,
+                second_moment_channel_fading_gain=self.second_moment_channel_fading_gain,
                 path_loss_exponent=self.path_loss_exponent,
+                information_list=self._information_list,
             )
 
             transmission_times = v2i_transmission.get_transmission_times()
@@ -405,7 +399,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             for information_index in range(len(sensed_information_type)):
                 infor = informationPacket(
                     type=sensed_information_type[information_index],
-                    vehicle_no=i,
+                    vehicle_index=i,
                     edge_no=self._edge_node.get_edge_no(),
                     updating_moment=updating_moments[information_index],
                     inter_arrival_interval=arrival_intervals[information_index],
@@ -433,7 +427,7 @@ class vehicularNetworkEnv(dm_env.Environment):
 
         return information_objects_ordered_by_views
 
-    def update_information_in_edge(self, information_objects_ordered_by_views: list) -> None:
+    def update_information_in_edge(self, information_objects_ordered_by_views: List[List[informationPacket]]) -> None:
         """Update the information in edge.
         Args:
             information_objects_ordered_by_views: the information objects ordered by views.
@@ -445,9 +439,9 @@ class vehicularNetworkEnv(dm_env.Environment):
         
     def compute_reward(
         self,
-        information_objects_ordered_by_views,
-        vehicle_actions: list,
-        vehicle_no: int = -1) -> float:
+        information_objects_ordered_by_views: List[List[informationPacket]],
+        vehicle_actions: List[vehicleAction],
+        vehicle_index: int = -1) -> float:
 
         """Compute the timeliness of views"""
         timeliness_views = []
@@ -456,8 +450,8 @@ class vehicularNetworkEnv(dm_env.Environment):
             for _ in range(self._vehicle_number):
                 timeliness_list.append(list())
             for infor in information_objects:
-                timeliness_list[infor.get_vehicle_no()].append(
-                    infor.get_arrrival_moment() + infor.get_queuing_time() + infor.get_transmission_time() - infor.get_updating_moment()
+                timeliness_list[infor.get_vehicle_index()].append(
+                    infor.get_arrival_moment() + infor.get_queuing_time() + infor.get_transmission_time() - infor.get_updating_moment()
                 )
             timeliness_of_vehicles = []
             for values in timeliness_list:
@@ -498,9 +492,9 @@ class vehicularNetworkEnv(dm_env.Environment):
             for _ in range(self._vehicle_number):
                 cost_list.append(list())
             for infor in information_objects:
-                cost_list[infor.get_vehicle_no()].append(
-                    self._vehicle_list.get_vehicle(infor.get_vehicle_no()).get_sensing_cost_by_type(infor.get_type()) + \
-                        infor.get_transmission_time() * vehicle_actions[infor.get_vehicle_no()].get_transmission_power()
+                cost_list[infor.get_vehicle_index()].append(
+                    self._vehicle_list.get_vehicle(infor.get_vehicle_index()).get_sensing_cost_by_type(infor.get_type()) + \
+                        infor.get_transmission_time() * vehicle_actions[infor.get_vehicle_index()].get_transmission_power()
                 )
             cost_of_vehicles = []
             for values in cost_list:
@@ -544,7 +538,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         reward = 0 if reward < 0 else reward
         reward = 1 if reward > 1 else reward
 
-        if vehicle_no == -1:
+        if vehicle_index == -1:
             self._reward_history.append(reward)
 
         return reward
@@ -681,7 +675,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             index += 1
         # information_requried
         for _ in range(self._config.information_number):
-            observation[index] = float(self._information_requirements.get_information_required_at_now()[_])
+            observation[index] = float(self._information_requirements.get_information_required_at_now(self._time_slots.now())[_])
             index += 1
 
         return observation

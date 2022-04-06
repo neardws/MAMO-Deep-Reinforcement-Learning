@@ -30,7 +30,7 @@ class D3PGLearner(acme.Learner):
     def __init__(
         self,
         vehicle_policy_network: snt.Module,
-        vehicel_critic_network: snt.Module,
+        vehicle_critic_network: snt.Module,
         edge_policy_network: snt.Module,
         edge_critic_network: snt.Module,
         target_vehicle_policy_network: snt.Module,
@@ -81,7 +81,7 @@ class D3PGLearner(acme.Learner):
 
         # Store online and target networks.
         self._vehicle_policy_network = vehicle_policy_network
-        self._vehicle_critic_network = vehicel_critic_network
+        self._vehicle_critic_network = vehicle_critic_network
         self._edge_policy_network = edge_policy_network
         self._edge_critic_network = edge_critic_network
 
@@ -219,11 +219,11 @@ class D3PGLearner(acme.Learner):
 
         with tf.GradientTape(persistent=True) as tape:
             """Deal with the observations."""
-            vehicle_observations_list: List[List[np.array]] = []
+            vehicle_observations_list: List[List[np.ndarray]] = []
             for _ in range(self._environment._config.vehicle_number):
                 vehicle_observations_list.append([])
 
-            vehicle_next_observations_list: List[List[np.array]] = []
+            vehicle_next_observations_list: List[List[np.ndarray]] = []
             for _ in range(self._environment._config.vehicle_number):
                 vehicle_next_observations_list.append([])
 
@@ -245,14 +245,14 @@ class D3PGLearner(acme.Learner):
 
             vehicle_observations_np_array_list = []
             for vehicle_index in range(self._environment._config.vehicle_number):
-                vehicle_observations_np_array: np.array = np.expand_dims(vehicle_observations_list[vehicle_index][0], axis=0)
+                vehicle_observations_np_array: np.ndarray = np.expand_dims(vehicle_observations_list[vehicle_index][0], axis=0)
                 for observation in vehicle_observations_list[vehicle_index][1:]:
                     vehicle_observations_np_array = np.concatenate((vehicle_observations_np_array, np.expand_dims(observation, axis=0)), axis=0)
                 vehicle_observations_np_array_list.append(vehicle_observations_np_array)
 
             vehicle_next_observations_np_array_list = []
             for vehicle_index in range(self._environment._config.vehicle_number):
-                vehicle_next_observations_np_array: np.array = np.expand_dims(vehicle_next_observations_list[vehicle_index][0], axis=0)
+                vehicle_next_observations_np_array: np.ndarray = np.expand_dims(vehicle_next_observations_list[vehicle_index][0], axis=0)
                 for observation in vehicle_next_observations_list[vehicle_index][1:]:
                     vehicle_next_observations_np_array = np.concatenate((vehicle_next_observations_np_array, np.expand_dims(observation, axis=0)), axis=0)
                 vehicle_next_observations_np_array_list.append(vehicle_next_observations_np_array)

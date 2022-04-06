@@ -1,21 +1,17 @@
 """Defines the MAD3PG agent class."""
 
 import copy
-from typing import Callable, Dict, Optional
+from typing import Optional
 
 import acme
-from Environments import specs
 from Environments.environment import vehicularNetworkEnv
-from agent import D3PGNetworks, D3PGConfig, D3PGAgent
+from Agents.MAD3PG.agent import D3PGNetworks, D3PGConfig, D3PGAgent
 from acme.tf import savers as tf2_savers
 from acme.utils import counting
 from acme.utils import loggers
 from acme.utils import lp_utils
-import dm_env
 import launchpad as lp
 import reverb
-import sonnet as snt
-import tensorflow as tf
 
 
 class MultiAgentDistributedDDPG:
@@ -59,12 +55,12 @@ class MultiAgentDistributedDDPG:
 
         # Create the networks to optimize (online) and target networks.
         online_networks = D3PGNetworks(
-            vehicle_policy_network=self.config.vehicle_policy_network,
-            vehicle_critic_network=self.config.vehicle_critic_network,
-            vehicle_observation_network=self.config.vehicle_observation_network,
-            edge_policy_network=self.config.edge_policy_network,
-            edge_critic_network=self.config.edge_critic_network,
-            edge_observation_network=self.config.edge_observation_network,
+            vehicle_policy_network=self._config.vehicle_policy_network,
+            vehicle_critic_network=self._config.vehicle_critic_network,
+            vehicle_observation_network=self._config.vehicle_observation_network,
+            edge_policy_network=self._config.edge_policy_network,
+            edge_critic_network=self._config.edge_critic_network,
+            edge_observation_network=self._config.edge_observation_network,
         )
         target_networks = copy.deepcopy(online_networks)
 
@@ -97,12 +93,12 @@ class MultiAgentDistributedDDPG:
 
         # Create the behavior policy.        
         networks = D3PGNetworks(
-            vehicle_policy_network=self.config.vehicle_policy_network,
-            vehicle_critic_network=self.config.vehicle_critic_network,
-            vehicle_observation_network=self.config.vehicle_observation_network,
-            edge_policy_network=self.config.edge_policy_network,
-            edge_critic_network=self.config.edge_critic_network,
-            edge_observation_network=self.config.edge_observation_network,
+            vehicle_policy_network=self._config.vehicle_policy_network,
+            vehicle_critic_network=self._config.vehicle_critic_network,
+            vehicle_observation_network=self._config.vehicle_observation_network,
+            edge_policy_network=self._config.edge_policy_network,
+            edge_critic_network=self._config.edge_critic_network,
+            edge_observation_network=self._config.edge_observation_network,
         )
         networks.init(self._config.environment_spec)
 
@@ -115,6 +111,7 @@ class MultiAgentDistributedDDPG:
         actor = self._agent.make_actor(
             vehicle_policy_network=vehicle_policy_network,
             edge_policy_network=edge_policy_network,
+            environment=environment,
             adder=self._agent.make_adder(replay),
             variable_source=variable_source,
         )
@@ -141,14 +138,14 @@ class MultiAgentDistributedDDPG:
 
         # Create the behavior policy.
         networks = D3PGNetworks(
-            vehicle_policy_network=self.config.vehicle_policy_network,
-            vehicle_critic_network=self.config.vehicle_critic_network,
-            vehicle_observation_network=self.config.vehicle_observation_network,
-            edge_policy_network=self.config.edge_policy_network,
-            edge_critic_network=self.config.edge_critic_network,
-            edge_observation_network=self.config.edge_observation_network,
+            vehicle_policy_network=self._config.vehicle_policy_network,
+            vehicle_critic_network=self._config.vehicle_critic_network,
+            vehicle_observation_network=self._config.vehicle_observation_network,
+            edge_policy_network=self._config.edge_policy_network,
+            edge_critic_network=self._config.edge_critic_network,
+            edge_observation_network=self._config.edge_observation_network,
         )
-        networks.init(self._config_environment_spec)
+        networks.init(self._config.environment_spec)
         
         vehicle_policy_network, edge_policy_network = networks.make_policy(self._config.environment_spec)
 
@@ -156,6 +153,7 @@ class MultiAgentDistributedDDPG:
         actor = self._agent.make_actor(
             vehicle_policy_network=vehicle_policy_network,
             edge_policy_network=edge_policy_network,
+            environment=environment,
             variable_source=variable_source,
         )
 

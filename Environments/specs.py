@@ -8,9 +8,8 @@ the `make_environment_spec` helper given a `dm_env.Environment` instance.
 
 from typing import NamedTuple
 from acme.types import NestedSpec
-import dm_env
 from dm_env import specs
-from environment import vehicularNetworkEnv
+from Environments.environment import vehicularNetworkEnv
 
 Array = specs.Array
 BoundedArray = specs.BoundedArray

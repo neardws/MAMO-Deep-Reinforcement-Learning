@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
-from utilities import v2iTransmission
-from typing import List, Tuple
+from Environments.utilities import v2iTransmission
+from typing import List, Tuple, Optional
 
 def softmax(x: list) -> list:
     """ softmax function.
@@ -61,7 +61,7 @@ class informationPacket(object):
     def __init__(
         self,
         type: int,
-        vehicle_no: int,
+        vehicle_index: int,
         edge_no: int = -1,
         updating_moment: float = -1,
         inter_arrival_interval: float = -1,
@@ -72,7 +72,7 @@ class informationPacket(object):
         """ initialize the information.
         Args:
             type: the type of the information.
-            vehicle_no: the index of the vehicle.
+            vehicle_index: the index of the vehicle.
             edge_no: the index of the edge.
             updating_moment: the generation time of the information.
             inter_arrival_interval: the inter-arrival interval of the information.
@@ -82,7 +82,7 @@ class informationPacket(object):
             received_moment: the received moment of the information.
         """
         self._type = type
-        self._vehicle_no = vehicle_no
+        self._vehicle_index = vehicle_index
         self._edge_no = edge_no
         self._updating_moment = updating_moment
         self._inter_arrival_interval = inter_arrival_interval
@@ -94,8 +94,8 @@ class informationPacket(object):
     def get_type(self) -> int:
         return self._type
     
-    def get_vehicle_no(self) -> int:
-        return self._vehicle_no
+    def get_vehicle_index(self) -> int:
+        return self._vehicle_index
     
     def get_edge_no(self) -> int:
         return self._edge_no
@@ -158,7 +158,7 @@ class trajectory(object):
         self._max_time_slots = timeSlots.get_number()
         self._locations = locations
 
-        if len(self._locations) != self._max_timestampes:
+        if len(self._locations) != self._max_time_slots:
             raise ValueError("The number of locations must be equal to the max_timestampes.")
 
     def get_location(self, nowTimeSlot: int) -> location:
@@ -181,29 +181,29 @@ class vehicle(object):
     """" the vehicle. """
     def __init__(
         self, 
-        vehicle_no: int,
+        vehicle_index: int,
         vehicle_trajectory: trajectory,
         information_number: int,
-        sened_information_number: int,
+        sensed_information_number: int,
         min_sensing_cost: float,
         max_sensing_cost: float,
         transmission_power: float,
         seed: int) -> None:
         """ initialize the vehicle.
         Args:
-            vehicle_no: the index of vehicle. e.g. 0, 1, 2, ...
+            vehicle_index: the index of vehicle. e.g. 0, 1, 2, ...
             vehicle_trajectory: the trajectory of the vehicle.
             information_number: the number of information list.
-            sened_information_number: the maximum number of information, which can be sensed by the vehicle.
+            sensed_information_number: the maximum number of information, which can be sensed by the vehicle.
             min_sensing_cost: the minimum sensing cost.
             max_sensing_cost: the maximum sensing cost.
             transmission_power: the transmission power.
             seed: the random seed.
         """
-        self._vehicle_no = vehicle_no
+        self._vehicle_index = vehicle_index
         self._vehicle_trajectory = vehicle_trajectory
         self._information_number = information_number
-        self._sensed_information_number = sened_information_number
+        self._sensed_information_number = sensed_information_number
         self._min_sensing_cost = min_sensing_cost
         self._max_sensing_cost = max_sensing_cost
         self._transmission_power = transmission_power
@@ -216,8 +216,8 @@ class vehicle(object):
 
         self._sensing_cost = self.sensing_cost_of_information()
 
-    def get_vehicle_no(self) -> int:
-        return self._vehicle_no
+    def get_vehicle_index(self) -> int:
+        return self._vehicle_index
 
     def get_transmission_power(self) -> float:
         return self._transmission_power
@@ -244,6 +244,7 @@ class vehicle(object):
         for _ in range(self._sensed_information_number):
             if self._information_canbe_sensed[_] == type:
                 return self._sensing_cost[_]
+        raise ValueError("The type is not in the sensing cost list.")
     
     def get_vehicle_location(self, nowTimeSlot: int) -> location:
         return self._vehicle_trajectory.get_location(nowTimeSlot)
@@ -265,6 +266,7 @@ class vehicleList(object):
     def __init__(
         self, 
         number: int, 
+        time_slots: timeSlots,
         trajectories_file_name: str,
         information_number: int,
         sensed_information_number: int,
@@ -292,13 +294,13 @@ class vehicleList(object):
         self._transmission_power = transmission_power
         self._seeds = seeds
 
-        self._vehicle_trajectories = self.read_vehicle_trajectories()
+        self._vehicle_trajectories = self.read_vehicle_trajectories(time_slots)
 
         self._vehicle_list: List[vehicle] = []
-        for i in range(self._vehicles_number):
+        for i in range(self._number):
             self._vehicle_list.append(
                 vehicle(
-                    vehicle_no=i,
+                    vehicle_index=i,
                     vehicle_trajectory=self._vehicle_trajectories[i],
                     information_number=self._information_number,
                     sensed_information_number=self._sensed_information_number,
@@ -318,13 +320,13 @@ class vehicleList(object):
     def get_sensed_information_number(self) -> int:
         return self._sensed_information_number
 
-    def get_vehicle(self, vehicle_no: int) -> vehicle:
-        return self._vehicle_list[vehicle_no]
+    def get_vehicle(self, vehicle_index: int) -> vehicle:
+        return self._vehicle_list[vehicle_index]
 
     def read_vehicle_trajectories(self, timeSlots: timeSlots) -> List[trajectory]:
 
         df = pd.read_csv(
-            self._vehicle_trajectories_file_name, 
+            self._trajectories_file_name, 
             names=['vehicle_id', 'time', 'longitude', 'latitude'], header=0)
 
         max_vehicle_id = df['vehicle_id'].max()
@@ -346,7 +348,7 @@ class vehicleList(object):
         selected_vehicle_id.sort(key=lambda x : x["distance"], reverse=True)
         new_vehicle_id = 0
         vehicle_trajectories: List[trajectory] = []
-        for vehicle_id in selected_vehicle_id[ : self._vehicles_number]:
+        for vehicle_id in selected_vehicle_id[ : self._number]:
             new_df = df[df['vehicle_id'] == vehicle_id["vehicle_id"]]
             loc_list: List[location] = []
             for row in new_df.itertuples():
@@ -356,9 +358,8 @@ class vehicleList(object):
                 loc = location(x, y)
                 loc_list.append(loc)
             new_vehicle_trajectory: trajectory = trajectory(
-                vehicle_id=new_vehicle_id,
                 timeSlots=timeSlots,
-                loc_list=loc_list
+                locations=loc_list
             )
             new_vehicle_id += 1
             vehicle_trajectories.append(new_vehicle_trajectory)
@@ -407,7 +408,7 @@ class edgeAction(object):
         edge: edge,
         now_time: int,
         vehicle_number: int,
-        bandwidth_allocation: np.array,
+        bandwidth_allocation: np.ndarray,
         action_time: int) -> None:
         """ initialize the edge action.
         Args:
@@ -422,7 +423,7 @@ class edgeAction(object):
         self._action_time = action_time
         self._bandwidth_allocation = bandwidth_allocation
 
-    def get_bandwidth_allocation(self) -> np.array:
+    def get_bandwidth_allocation(self) -> np.ndarray:
         return self._bandwidth_allocation
 
     def get_the_sum_of_bandwidth_allocation(self) -> float:
@@ -448,7 +449,7 @@ class edgeAction(object):
         now_time: int,
         edge_node: edge,
         action_time: int,
-        network_output: np.array,
+        network_output: np.ndarray,
         vehicle_number: int):
         """ generate the edge action from the neural network output.
         Args:
@@ -639,8 +640,8 @@ class informationList(object):
         vehicle_list: vehicleList,
         edge_node: edge,
         additive_white_gaussian_noise: int,
-        mean_channel_fadding_gain: float,
-        second_channel_fadding_gain: float,
+        mean_channel_fading_gain: float,
+        second_moment_channel_fading_gain: float,
         path_loss_exponent: int) -> None:
         """ initialize the information list.
         Args:
@@ -696,8 +697,8 @@ class informationList(object):
                 vehicle_list=vehicle_list,
                 edge_node=edge_node,
                 additive_white_gaussian_noise=additive_white_gaussian_noise,
-                mean_channel_fadding_gain=mean_channel_fadding_gain,
-                second_channel_fadding_gain=second_channel_fadding_gain,
+                mean_channel_fading_gain=mean_channel_fading_gain,
+                second_moment_channel_fading_gain=second_moment_channel_fading_gain,
                 path_loss_exponent=path_loss_exponent
             )
 
@@ -721,42 +722,42 @@ class informationList(object):
         for infor in self._information_list:
             if infor.get_type() == type:
                 return infor
-        return None
+        raise ValueError("The type is not in the list.")
 
     def get_information_siez_by_type(self, type: int) -> float:
         """method to get the information size by type"""
         for information in self._information_list:
             if information.get_type() == type:
                 return information.get_data_size()
-        return None
+        raise ValueError("The type is not in the list.")
 
     def get_information_update_interval_by_type(self, type: int) -> int:
         """method to get the information update interval by type"""
         for information in self._information_list:
             if information.get_type() == type:
                 return information.get_update_interval()
-        return None
+        raise ValueError("The type is not in the list.")
 
-    def get_mean_service_time_of_types(self) -> np.array:
-        return self.mean_service_time_of_types
+    def get_mean_service_time_of_types(self) -> np.ndarray:
+        return self._mean_service_time_of_types
     
-    def get_second_moment_service_time_of_types(self) -> np.array:
-        return self.second_moment_service_time_of_types
+    def get_second_moment_service_time_of_types(self) -> np.ndarray:
+        return self._second_moment_service_time_of_types
 
-    def get_mean_service_time_by_vehicle_and_type(self, vehicle_no, type) -> float:
-        return self.mean_service_time_of_types[vehicle_no][type]
+    def get_mean_service_time_by_vehicle_and_type(self, vehicle_index, type) -> float:
+        return self._mean_service_time_of_types[vehicle_index][type]
 
-    def get_second_moment_service_time_by_vehicle_and_type(self, vehicle_no, type) -> float:
-        return self.second_moment_service_time_of_types[vehicle_no][type]
+    def get_second_moment_service_time_by_vehicle_and_type(self, vehicle_index, type) -> float:
+        return self._second_moment_service_time_of_types[vehicle_index][type]
 
     def compute_mean_and_second_moment_service_time_of_types(
         self, 
         vehicle_list: vehicleList,
         edge_node: edge,
         additive_white_gaussian_noise,
-        mean_channel_fadding_gain,
-        second_channel_fadding_gain,
-        path_loss_exponent) -> Tuple[np.array, np.array]:
+        mean_channel_fading_gain,
+        second_moment_channel_fading_gain,
+        path_loss_exponent) -> Tuple[np.ndarray, np.ndarray]:
         """
         method to get the mean and second moment service time of 
         each type of information at each vehile.
@@ -764,13 +765,13 @@ class informationList(object):
             vehicle_list: the vehicle list.
             edge_node: the edge node.
             additive_white_gaussian_noise: the additive white gaussian noise.
-            mean_channel_fadding_gain: the mean channel fadding gain.
-            second_channel_fadding_gain: the second channel fadding gain.
+            mean_channel_fading_gain: the mean channel fadding gain.
+            second_moment_channel_fading_gain: the second channel fadding gain.
             path_loss_exponent: the path loss exponent.
         Returns:
             the mean and second moment service time of each type of information.
         """
-        vehicle_number = vehicle_list.get_vehicles_number()
+        vehicle_number = vehicle_list.get_number()
         mean_service_time_of_types = np.zeros(shape=(vehicle_number, self._data_types_number))
         second_moment_service_time_of_types = np.zeros(shape=(vehicle_number, self._data_types_number))
 
@@ -783,8 +784,8 @@ class informationList(object):
                 for location in vehicle.get_vehicle_trajectory().get_locations():
                     distance = location.get_distance(edge_node.get_edge_location())
                     channel_fading_gain = v2iTransmission.generate_channel_fading_gain(
-                        mean=mean_channel_fadding_gain,
-                        second_moment=second_channel_fadding_gain
+                        mean_channel_fading_gain=mean_channel_fading_gain,
+                        second_moment_channel_fading_gain=second_moment_channel_fading_gain
                     )
                     SNR = v2iTransmission.compute_SNR(
                         white_gaussian_noise=white_gaussian_noise,
@@ -807,16 +808,16 @@ class vehicleAction(object):
     """ the action of the vehicle. """
     def __init__(
         self, 
-        vehicle_no: int,
+        vehicle_index: int,
         now_time: int,
-        sensed_information: List[int] = None,
-        sensing_frequencies: List[float] = None,
-        uploading_priorities: List[float] = None,
-        transmission_power: float = None, 
-        action_time: int = None) -> None:
+        sensed_information: Optional[List[int]] = None,
+        sensing_frequencies: Optional[List[float]] = None,
+        uploading_priorities: Optional[List[float]] = None,
+        transmission_power: Optional[float] = None, 
+        action_time: Optional[int] = None) -> None:
         """ initialize the vehicle action.
         Args:
-            vehicle_no: the index of vehicle. e.g. 0, 1, 2, ...
+            vehicle_index: the index of vehicle. e.g. 0, 1, 2, ...
             now_time: the current time.
             vehicle_list: the vehicle list.
             sensed_information: the sensed information.
@@ -827,7 +828,7 @@ class vehicleAction(object):
             transmission_power: the transmission power.
             action_time: the time of the action.
         """
-        self._vehicle_no = vehicle_no
+        self._vehicle_index = vehicle_index
         self._now_time = now_time
         self._sensed_information = sensed_information
         self._sensing_frequencies = sensing_frequencies
@@ -847,9 +848,9 @@ class vehicleAction(object):
         """
         if self._action_time != nowTimeSlot:
             return False
-        if self._vehicle_no >= len(vehicleList.get_vehicle_list()):
+        if self._vehicle_index >= len(vehicleList.get_vehicle_list()):
             return False
-        vehicle = vehicleList.get_vehicle(self._vehicle_no)
+        vehicle = vehicleList.get_vehicle(self._vehicle_index)
         if not (len(self._sensed_information) == len(self._sensing_frequencies) \
             == len(self._uploading_priorities) == len(vehicle.get_sensed_information_number())):
             return False
@@ -875,14 +876,14 @@ class vehicleAction(object):
     @staticmethod
     def generate_from_np_array(
         now_time: int,
-        vehicle_no: int,
+        vehicle_index: int,
         vehicle_list: vehicleList,
         information_list: informationList,
         sensed_information_number: int,
-        network_output: np.array,
+        network_output: np.ndarray,
         white_gaussian_noise: int,
         mean_channel_fading_gain: float,
-        second_moment_channel_fadding_gain: float,
+        second_moment_channel_fading_gain: float,
         edge_location: location,
         path_loss_exponent: int,
         SNR_target: float,
@@ -908,11 +909,11 @@ class vehicleAction(object):
                 sensed_information[index] = 1
         frequencies = network_output[sensed_information_number: 2*sensed_information_number]
         frequencies = softmax(list(frequencies))
-        for index, values in enumerate():
+        for index, values in enumerate(frequencies):
             if sensed_information[index] == 1:
                 sensing_frequencies[index] = values / information_list.get_mean_service_time_by_vehicle_and_type(
-                    vehicle_no=vehicle_no,
-                    data_type_index=vehicle_list.get_vehicle(vehicle_no).get_information_canbe_sensed(index)
+                    vehicle_index=vehicle_index,
+                    data_type_index=vehicle_list.get_vehicle(vehicle_index).get_information_canbe_sensed(index)
                 )
         for index, values in enumerate(network_output[2*sensed_information_number: 3*sensed_information_number]):
             if sensed_information[index] == 1:
@@ -925,22 +926,22 @@ class vehicleAction(object):
         minimum_transmission_power = v2iTransmission.get_minimum_transmission_power(
             white_gaussian_noise=white_gaussian_noise,
             mean_channel_fading_gain=mean_channel_fading_gain,
-            second_moment_channel_fadding_gain=second_moment_channel_fadding_gain,
-            distance=vehicle_list.get_vehicle(vehicle_no).get_vehicle_location(now_time).get_distance(edge_location),
+            second_moment_channel_fading_gain=second_moment_channel_fading_gain,
+            distance=vehicle_list.get_vehicle(vehicle_index).get_vehicle_location(now_time).get_distance(edge_location),
             path_loss_exponent=path_loss_exponent,
-            transmission_power=vehicle_list.get_vehicle(vehicle_no).get_transmission_power(),
+            transmission_power=vehicle_list.get_vehicle(vehicle_index).get_transmission_power(),
             SNR_target=SNR_target,
             probabiliity_threshold=probabiliity_threshold
         )
 
         transmisson_power = minimum_transmission_power + network_output[-1] * \
-            (vehicle_list.get_vehicle(vehicle_no).get_transmission_power() - minimum_transmission_power)
+            (vehicle_list.get_vehicle(vehicle_index).get_transmission_power() - minimum_transmission_power)
         
         vehicle_action = vehicleAction(
-            vehicle_no=vehicle_no,
+            vehicle_index=vehicle_index,
             now_time=now_time,
 
-            sensed_information_types=sensed_information,
+            sensed_information=sensed_information,
             sensing_frequencies=sensing_frequencies,
             uploading_priorities=uploading_priorities,
             transmission_power=transmisson_power,
@@ -1077,7 +1078,7 @@ class informationRequirements(object):
 
         return information_type_required_by_views_at_now
     
-    def get_information_required_at_now(self, nowTimeStamp: int) -> np.array:
+    def get_information_required_at_now(self, nowTimeStamp: int) -> np.ndarray:
         """ get the information required now.
         Args:
             nowTimeStamp: the current timestamp.
@@ -1097,47 +1098,48 @@ class informationRequirements(object):
 
 
 if __name__ == "__main__":
-    application = applicationList(
-        application_number=10,
-        view_number=10,
-        views_per_application=1,
-        seed=1
-    )
-    print("application:\n", application.get_application_list())
+    pass
+    # application = applicationList(
+    #     number=10,
+    #     view_number=10,
+    #     views_per_application=1,
+    #     seed=1
+    # )
+    # print("application:\n", application.get_application_list())
 
-    information_list = informationList(
-        information_number=10, 
-        seed=0, 
-        data_size_low_bound=0, 
-        data_size_up_bound=1, 
-        data_types_number=3, 
-        update_interval_low_bound=1, 
-        update_interval_up_bound=3
-    )
-    print("information_list:\n", information_list.get_information_list())
+    # information_list = informationList(
+    #     number=10, 
+    #     seed=0, 
+    #     data_size_low_bound=0, 
+    #     data_size_up_bound=1, 
+    #     data_types_number=3, 
+    #     update_interval_low_bound=1, 
+    #     update_interval_up_bound=3
+    # )
+    # print("information_list:\n", information_list.get_information_list())
 
-    view = viewList(
-        view_number=10,
-        information_number=10,
-        max_information_number=3,
-        seeds=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    )
-    print("views:\n", view.get_view_list())
+    # view = viewList(
+    #     number=10,
+    #     information_number=10,
+    #     max_information_number=3,
+    #     seeds=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    # )
+    # print("views:\n", view.get_view_list())
 
-    information_required = informationRequirements(
-        max_timestampes=10,
-        max_application_number=10,
-        min_application_number=1,
-        application=application,
-        view=view,
-        information=information_list,
-        seed=0
-    )
-    print(information_required.applications_at_time)
-    nowTimeStamp = 0
-    print(information_required.applications_at_now(nowTimeStamp))
-    print(information_required.views_required_by_application_at_now(nowTimeStamp))
-    print(information_required.information_required_by_views_at_now(nowTimeStamp))
+    # information_required = informationRequirements(
+    #     max_timestampes=10,
+    #     max_application_number=10,
+    #     min_application_number=1,
+    #     application=application,
+    #     view=view,
+    #     information=information_list,
+    #     seed=0
+    # )
+    # print(information_required.applications_at_time)
+    # nowTimeStamp = 0
+    # print(information_required.applications_at_now(nowTimeStamp))
+    # print(information_required.views_required_by_application_at_now(nowTimeStamp))
+    # print(information_required.information_required_by_views_at_now(nowTimeStamp))
 
     """Print the result."""
     """

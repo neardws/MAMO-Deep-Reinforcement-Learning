@@ -10,9 +10,9 @@ from acme import datasets
 from Environments import specs
 from acme import types
 from acme.adders import reverb as reverb_adders
-import actors
+from Agents.MAD3PG import actors
 from acme.agents import agent
-import learning
+from Agents.MAD3PG import learning
 from acme.tf import networks as network_utils
 from acme.tf import utils
 from acme.tf import variable_utils
@@ -217,7 +217,7 @@ class D3PGAgent(agent.Agent):
         adder = self.make_adder(replay_client)
         actor = self.make_actor(vehicle_policy_network, edge_policy_network, self._config.environment, adder)
         dataset = self.make_dataset_iterator(replay_client)
-        learner = self.make_learner(online_networks, target_networks, dataset, self._config.counter, self._config.logger, self._config.environment_speccheckpoint)
+        learner = self.make_learner(online_networks, target_networks, dataset, self._config.counter, self._config.logger, self._config.checkpoint)
 
         super().__init__(
             actor=actor,
