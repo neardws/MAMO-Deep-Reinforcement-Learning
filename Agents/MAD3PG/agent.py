@@ -27,6 +27,7 @@ import tensorflow as tf
 class D3PGConfig:
     """Configuration options for the MAD3PG agent.
     Args:
+        environment: Environment specification.
         environment_spec: description of the actions, observations, etc.
         policy_network: the online (optimized) policy.
         critic_network: the online critic.
@@ -51,6 +52,7 @@ class D3PGConfig:
         logger: logger object to be used by learner.
         checkpoint: boolean indicating whether to checkpoint the learner.
     """
+    environment: Optional[vehicularNetworkEnv] = None
     environment_spec: Optional[specs.EnvironmentSpec] = None
     vehicle_policy_network: Optional[snt.Module] = None
     vehicle_critic_network: Optional[snt.Module] = None
@@ -118,10 +120,8 @@ class D3PGNetworks:
         """Initialize the networks given an environment spec."""
         # Get observation and action specs.
         vehicle_observation_spec = environment_spec.vehicle_observations
-        vehicle_action_spec = environment_spec.vehicle_actions
         critic_vehicle_action_spec = environment_spec.critic_vehicle_actions
         edge_observation_spec = environment_spec.edge_observations
-        edge_action_spec = environment_spec.edge_actions
         critic_edge_action_spec = environment_spec.critic_edge_actions
 
         # Create variables for the observation net and, as a side-effect, get a
@@ -170,7 +170,7 @@ class D3PGNetworks:
         return snt.Sequential(vehicle_stack), snt.Sequential(edge_stack)
 
 
-class D3PG(agent.Agent):
+class D3PGAgent(agent.Agent):
     """D3PG Agent.
     This implements a single-process D3PG agent. This is an actor-critic algorithm
     that generates data via a behavior policy, inserts N-step transitions into
@@ -205,7 +205,7 @@ class D3PG(agent.Agent):
         target_networks.init(self._config.environment_spec)
 
         # Create the behavior policy.
-        policy_network = online_networks.make_policy(self._config.environment_spec, self._config.sigma)
+        vehicle_policy_network, edge_policy_network = online_networks.make_policy(self._config.environment_spec, self._config.sigma)
 
         # Create the replay server and grab its address.
         replay_tables = self.make_replay_tables(self._config.environment_spec)
@@ -215,7 +215,7 @@ class D3PG(agent.Agent):
         # Create actor, dataset, and learner for generating, storing, and consuming
         # data respectively.
         adder = self.make_adder(replay_client)
-        actor = self.make_actor(policy_network, adder)
+        actor = self.make_actor(vehicle_policy_network, edge_policy_network, self._config.environment, adder)
         dataset = self.make_dataset_iterator(replay_client)
         learner = self.make_learner(online_networks, target_networks, dataset, self._config.counter, self._config.logger, self._config.environment_speccheckpoint)
 

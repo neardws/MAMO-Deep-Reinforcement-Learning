@@ -5,7 +5,8 @@ from typing import Callable, Dict, Optional
 
 import acme
 from Environments import specs
-from agent import D3PGNetworks, D3PGBuilder, D3PGConfig
+from Environments.environment import vehicularNetworkEnv
+from agent import D3PGNetworks, D3PGConfig, D3PGAgent
 from acme.tf import savers as tf2_savers
 from acme.utils import counting
 from acme.utils import loggers
@@ -19,73 +20,27 @@ import tensorflow as tf
 
 class MultiAgentDistributedDDPG:
     """Program definition for MAD3PG."""
-
     def __init__(
         self,
-        environment_factory: Callable[[bool], dm_env.Environment],
-        network_factory: Callable[[specs.BoundedArray], Dict[str, snt.Module]],
+        config: D3PGConfig,
         num_actors: int = 1,
         num_caches: int = 0,
-        environment_spec: Optional[specs.EnvironmentSpec] = None,
-        batch_size: int = 256,
-        prefetch_size: int = 4,
-        min_replay_size: int = 1000,
-        max_replay_size: int = 1000000,
-        samples_per_insert: Optional[float] = 32.0,
-        n_step: int = 5,
-        sigma: float = 0.3,
-        clipping: bool = True,
-        discount: float = 0.99,
-        policy_optimizer: Optional[snt.Optimizer] = None,
-        critic_optimizer: Optional[snt.Optimizer] = None,
-        target_update_period: int = 100,
         max_actor_steps: Optional[int] = None,
         log_every: float = 10.0,
     ):
-
-        if not environment_spec:
-            environment_spec = specs.make_environment_spec(environment_factory(False))
-
-        # TODO: Make network_factory directly return the struct.
-        # TODO: Make the factory take the entire spec.
-        def wrapped_network_factory(action_spec):
-            networks_dict = network_factory(action_spec)
-            networks = D3PGNetworks(
-                policy_network=networks_dict.get('policy'),
-                critic_network=networks_dict.get('critic'),
-                observation_network=networks_dict.get('observation', tf.identity))
-            return networks
-
-        self._environment_factory = environment_factory
-        self._network_factory = wrapped_network_factory
-        self._environment_spec = environment_spec
-        self._sigma = sigma
+        """Initialize the MAD3PG agent."""
+        self._config = config
         self._num_actors = num_actors
         self._num_caches = num_caches
         self._max_actor_steps = max_actor_steps
         self._log_every = log_every
 
-        self._builder = D3PGBuilder(
-            # TODO: pass the config dataclass in directly.
-            # TODO: use the limiter rather than the workaround below.
-            D3PGConfig(
-                discount=discount,
-                batch_size=batch_size,
-                prefetch_size=prefetch_size,
-                target_update_period=target_update_period,
-                policy_optimizer=policy_optimizer,
-                critic_optimizer=critic_optimizer,
-                min_replay_size=min_replay_size,
-                max_replay_size=max_replay_size,
-                samples_per_insert=samples_per_insert,
-                n_step=n_step,
-                sigma=sigma,
-                clipping=clipping,
-            ))
+        # Create the agent.
+        self._agent = D3PGAgent(self._config)
 
     def replay(self):
         """The replay storage."""
-        return self._builder.make_replay_tables(self._environment_spec)
+        return self._agent.make_replay_tables(self._config.environment_spec)
 
     def counter(self):
         return tf2_savers.CheckpointingRunner(counting.Counter(),
@@ -103,20 +58,28 @@ class MultiAgentDistributedDDPG:
         """The Learning part of the agent."""
 
         # Create the networks to optimize (online) and target networks.
-        online_networks = self._network_factory(self._environment_spec.actions)
+        online_networks = D3PGNetworks(
+            vehicle_policy_network=self.config.vehicle_policy_network,
+            vehicle_critic_network=self.config.vehicle_critic_network,
+            vehicle_observation_network=self.config.vehicle_observation_network,
+            edge_policy_network=self.config.edge_policy_network,
+            edge_critic_network=self.config.edge_critic_network,
+            edge_observation_network=self.config.edge_observation_network,
+        )
         target_networks = copy.deepcopy(online_networks)
 
         # Initialize the networks.
-        online_networks.init(self._environment_spec)
-        target_networks.init(self._environment_spec)
+        online_networks.init(self._config.environment_spec)
+        target_networks.init(self._config.environment_spec)
 
-        dataset = self._builder.make_dataset_iterator(replay)
+        dataset = self._agent.make_dataset_iterator(replay)
         counter = counting.Counter(counter, 'learner')
         logger = loggers.make_default_logger(
             'learner', time_delta=self._log_every, steps_key='learner_steps')
 
-        return self._builder.make_learner(
-            networks=(online_networks, target_networks),
+        return self._agent.make_learner(
+            online_networks=online_networks, 
+            target_networks=target_networks,
             dataset=dataset,
             counter=counter,
             logger=logger,
@@ -128,26 +91,33 @@ class MultiAgentDistributedDDPG:
         replay: reverb.Client,
         variable_source: acme.VariableSource,
         counter: counting.Counter,
+        environment: Optional[vehicularNetworkEnv] = None,  #  Create the environment to interact with actor.
     ) -> acme.EnvironmentLoop:
         """The actor process."""
 
-        # Create the behavior policy.
-        networks = self._network_factory(self._environment_spec.actions)
-        networks.init(self._environment_spec)
-        policy_network = networks.make_policy(
-            environment_spec=self._environment_spec,
-            sigma=self._sigma,
+        # Create the behavior policy.        
+        networks = D3PGNetworks(
+            vehicle_policy_network=self.config.vehicle_policy_network,
+            vehicle_critic_network=self.config.vehicle_critic_network,
+            vehicle_observation_network=self.config.vehicle_observation_network,
+            edge_policy_network=self.config.edge_policy_network,
+            edge_critic_network=self.config.edge_critic_network,
+            edge_observation_network=self.config.edge_observation_network,
+        )
+        networks.init(self._config.environment_spec)
+
+        vehicle_policy_network, edge_policy_network = networks.make_policy(
+            environment_spec=self._config.environment_spec,
+            sigma=self._config.sigma,
         )
 
         # Create the agent.
-        actor = self._builder.make_actor(
-            policy_network=policy_network,
-            adder=self._builder.make_adder(replay),
+        actor = self._agent.make_actor(
+            vehicle_policy_network=vehicle_policy_network,
+            edge_policy_network=edge_policy_network,
+            adder=self._agent.make_adder(replay),
             variable_source=variable_source,
         )
-
-        # Create the environment.
-        environment = self._environment_factory(False)
 
         # Create logger and counter; actors will not spam bigtable.
         counter = counting.Counter(counter, 'actor')
@@ -165,22 +135,29 @@ class MultiAgentDistributedDDPG:
         variable_source: acme.VariableSource,
         counter: counting.Counter,
         logger: Optional[loggers.Logger] = None,
+        environment: Optional[vehicularNetworkEnv] = None,  #  Create the environment to interact with evaluator.
     ):
         """The evaluation process."""
 
         # Create the behavior policy.
-        networks = self._network_factory(self._environment_spec.actions)
-        networks.init(self._environment_spec)
-        policy_network = networks.make_policy(self._environment_spec)
+        networks = D3PGNetworks(
+            vehicle_policy_network=self.config.vehicle_policy_network,
+            vehicle_critic_network=self.config.vehicle_critic_network,
+            vehicle_observation_network=self.config.vehicle_observation_network,
+            edge_policy_network=self.config.edge_policy_network,
+            edge_critic_network=self.config.edge_critic_network,
+            edge_observation_network=self.config.edge_observation_network,
+        )
+        networks.init(self._config_environment_spec)
+        
+        vehicle_policy_network, edge_policy_network = networks.make_policy(self._config.environment_spec)
 
         # Create the agent.
-        actor = self._builder.make_actor(
-            policy_network=policy_network,
+        actor = self._agent.make_actor(
+            vehicle_policy_network=vehicle_policy_network,
+            edge_policy_network=edge_policy_network,
             variable_source=variable_source,
         )
-
-        # Make the environment.
-        environment = self._environment_factory(True)
 
         # Create logger and counter.
         counter = counting.Counter(counter, 'evaluator')
