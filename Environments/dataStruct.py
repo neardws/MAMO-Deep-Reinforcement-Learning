@@ -1,6 +1,6 @@
+from cmath import inf
 import numpy as np
 import pandas as pd
-from Environments.utilities import v2iTransmission
 from typing import List, Tuple, Optional
 
 def softmax(x: list) -> list:
@@ -48,6 +48,12 @@ class timeSlots(object):
 
     def now(self) -> int:
         return self._now
+    
+    def get_start(self) -> int:
+        return self._start
+
+    def get_end(self) -> int:
+        return self._end
 
     def reset(self) -> None:
         self._now = self._start
@@ -62,7 +68,7 @@ class informationPacket(object):
         self,
         type: int,
         vehicle_index: int,
-        edge_no: int = -1,
+        edge_index: int = -1,
         updating_moment: float = -1,
         inter_arrival_interval: float = -1,
         arrival_moment: float = -1,
@@ -73,7 +79,7 @@ class informationPacket(object):
         Args:
             type: the type of the information.
             vehicle_index: the index of the vehicle.
-            edge_no: the index of the edge.
+            edge_index: the index of the edge.
             updating_moment: the generation time of the information.
             inter_arrival_interval: the inter-arrival interval of the information.
             arrival_moment: the arrival moment of the information.
@@ -83,7 +89,7 @@ class informationPacket(object):
         """
         self._type = type
         self._vehicle_index = vehicle_index
-        self._edge_no = edge_no
+        self._edge_index = edge_index
         self._updating_moment = updating_moment
         self._inter_arrival_interval = inter_arrival_interval
         self._arrival_moment = arrival_moment
@@ -97,8 +103,8 @@ class informationPacket(object):
     def get_vehicle_index(self) -> int:
         return self._vehicle_index
     
-    def get_edge_no(self) -> int:
-        return self._edge_no
+    def get_edge_index(self) -> int:
+        return self._edge_index
     
     def get_updating_moment(self) -> float:
         return self._updating_moment
@@ -155,10 +161,9 @@ class trajectory(object):
             max_time_slots: the maximum number of time slots.
             locations: the location list.
         """
-        self._max_time_slots = timeSlots.get_number()
         self._locations = locations
 
-        if len(self._locations) != self._max_time_slots:
+        if len(self._locations) != timeSlots.get_number():
             raise ValueError("The number of locations must be equal to the max_timestampes.")
 
     def get_location(self, nowTimeSlot: int) -> location:
@@ -176,6 +181,20 @@ class trajectory(object):
             the locations.
         """
         return self._locations
+
+    def __str__(self) -> str:
+        """ print the trajectory.
+        Returns:
+            the string of the trajectory.
+        """
+        print_result= ""
+        for index, location in enumerate(self._locations):
+            if index % 10 == 0:
+                print_result += "\n"
+            print_result += "(" + str(index) + ", "
+            print_result += str(location.get_x()) + ", "
+            print_result += str(location.get_y()) + ")"
+        return print_result
 
 class vehicle(object):
     """" the vehicle. """
@@ -237,6 +256,9 @@ class vehicle(object):
             size=self._sensed_information_number
         ))
 
+    def get_information_can_be_sensed(self) -> List[int]:
+        return self._information_canbe_sensed
+
     def get_sensing_cost(self) -> List[float]:
         return self._sensing_cost
     
@@ -249,7 +271,7 @@ class vehicle(object):
     def get_vehicle_location(self, nowTimeSlot: int) -> location:
         return self._vehicle_trajectory.get_location(nowTimeSlot)
 
-    def get_distance_between_edge(self, nowTimeSlot: int, edge_location) -> float:
+    def get_distance_between_edge(self, nowTimeSlot: int, edge_location: location) -> float:
         return self._vehicle_trajectory.get_location(nowTimeSlot).get_distance(edge_location)
 
     def get_sensed_information_number(self) -> int:
@@ -323,13 +345,20 @@ class vehicleList(object):
     def get_vehicle(self, vehicle_index: int) -> vehicle:
         return self._vehicle_list[vehicle_index]
 
+    def get_vehicle_trajectories(self) -> List[trajectory]:
+        return self._vehicle_trajectories
+
     def read_vehicle_trajectories(self, timeSlots: timeSlots) -> List[trajectory]:
 
         df = pd.read_csv(
             self._trajectories_file_name, 
             names=['vehicle_id', 'time', 'longitude', 'latitude'], header=0)
 
+        print(df)
+
         max_vehicle_id = df['vehicle_id'].max()
+        print("max_vehicle_id:", max_vehicle_id)
+        print("the type of max_vehicle_id:", type(max_vehicle_id))
 
         selected_vehicle_id = []
         for vehicle_id in range(int(max_vehicle_id)):
@@ -370,27 +399,27 @@ class edge(object):
     """ the edge. """
     def __init__(
         self, 
-        edge_no: int,
+        edge_index: int,
         information_number: int,
         edge_location: location,
         communication_range: float,
         bandwidth: float) -> None:
         """ initialize the edge.
         Args:
-            edge_no: the index of edge. e.g. 0, 1, 2, ...
+            edge_index: the index of edge. e.g. 0, 1, 2, ...
             information_number: the number of information list.
             edge_location: the location of the edge.
             communication_range: the range of V2I communications.
             bandwidth: the bandwidth of edge.
         """
-        self._edge_no = edge_no
+        self._edge_index = edge_index
         self._information_number = information_number
         self._edge_location = edge_location
         self._communication_range = communication_range
         self._bandwidth = bandwidth
 
-    def get_edge_no(self) -> int:
-        return self._edge_no
+    def get_edge_index(self) -> int:
+        return self._edge_index
 
     def get_edge_location(self) -> location:
         return self._edge_location
@@ -771,11 +800,13 @@ class informationList(object):
         Returns:
             the mean and second moment service time of each type of information.
         """
+        from Environments.utilities import cover_dBm_to_W, generate_channel_fading_gain, compute_SNR, compute_transmission_rate
+
         vehicle_number = vehicle_list.get_number()
         mean_service_time_of_types = np.zeros(shape=(vehicle_number, self._data_types_number))
         second_moment_service_time_of_types = np.zeros(shape=(vehicle_number, self._data_types_number))
 
-        white_gaussian_noise = v2iTransmission.cover_dBm_to_W(additive_white_gaussian_noise)
+        white_gaussian_noise = cover_dBm_to_W(additive_white_gaussian_noise)
 
         for vehicle_index in range(vehicle_number):
             vehicle = vehicle_list.get_vehicle(vehicle_index)
@@ -783,11 +814,12 @@ class informationList(object):
                 transmission_time = []
                 for location in vehicle.get_vehicle_trajectory().get_locations():
                     distance = location.get_distance(edge_node.get_edge_location())
-                    channel_fading_gain = v2iTransmission.generate_channel_fading_gain(
+                    # print(distance)
+                    channel_fading_gain = generate_channel_fading_gain(
                         mean_channel_fading_gain=mean_channel_fading_gain,
                         second_moment_channel_fading_gain=second_moment_channel_fading_gain
                     )
-                    SNR = v2iTransmission.compute_SNR(
+                    SNR = compute_SNR(
                         white_gaussian_noise=white_gaussian_noise,
                         channel_fading_gain=channel_fading_gain,
                         distance=distance,
@@ -795,8 +827,11 @@ class informationList(object):
                         transmission_power=vehicle.get_transmission_power()
                     )
                     bandwidth = edge_node.get_bandwidth() / vehicle_number
-                    transmission_time.append(self.get_information_siez_by_type(data_type_index) / v2iTransmission.compute_transmission_rate(SNR, bandwidth))
-                
+                    # print(bandwidth)
+                    # print(self.get_information_siez_by_type(data_type_index))
+                    print(compute_transmission_rate(SNR, bandwidth))
+                    if self.get_information_siez_by_type(data_type_index) / compute_transmission_rate(SNR, bandwidth) != inf:
+                        transmission_time.append(self.get_information_siez_by_type(data_type_index) / compute_transmission_rate(SNR, bandwidth))
                 mean_service_time = np.array(transmission_time).mean()
                 second_moment_service_time = np.array(transmission_time).var()
                 mean_service_time_of_types[vehicle_index][data_type_index] = mean_service_time
@@ -900,6 +935,9 @@ class vehicleAction(object):
         Returns:
             the vehicle action.
         """
+        from Environments.utilities import get_minimum_transmission_power
+
+
         sensed_information = np.zeros(shape=(sensed_information_number,))
         sensing_frequencies = np.zeros(shape=(sensed_information_number,))
         uploading_priorities = np.zeros(shape=(sensed_information_number,))
@@ -923,7 +961,7 @@ class vehicleAction(object):
         sensing_frequencies = list(sensing_frequencies)
         uploading_priorities = list(uploading_priorities)
 
-        minimum_transmission_power = v2iTransmission.get_minimum_transmission_power(
+        minimum_transmission_power = get_minimum_transmission_power(
             white_gaussian_noise=white_gaussian_noise,
             mean_channel_fading_gain=mean_channel_fading_gain,
             second_moment_channel_fading_gain=second_moment_channel_fading_gain,
@@ -1095,96 +1133,3 @@ class informationRequirements(object):
                 information_type_required_at_now[self._information_list.get_information_type_by_index(information_index)] = 1 
 
         return information_type_required_at_now
-
-
-if __name__ == "__main__":
-    pass
-    # application = applicationList(
-    #     number=10,
-    #     view_number=10,
-    #     views_per_application=1,
-    #     seed=1
-    # )
-    # print("application:\n", application.get_application_list())
-
-    # information_list = informationList(
-    #     number=10, 
-    #     seed=0, 
-    #     data_size_low_bound=0, 
-    #     data_size_up_bound=1, 
-    #     data_types_number=3, 
-    #     update_interval_low_bound=1, 
-    #     update_interval_up_bound=3
-    # )
-    # print("information_list:\n", information_list.get_information_list())
-
-    # view = viewList(
-    #     number=10,
-    #     information_number=10,
-    #     max_information_number=3,
-    #     seeds=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    # )
-    # print("views:\n", view.get_view_list())
-
-    # information_required = informationRequirements(
-    #     max_timestampes=10,
-    #     max_application_number=10,
-    #     min_application_number=1,
-    #     application=application,
-    #     view=view,
-    #     information=information_list,
-    #     seed=0
-    # )
-    # print(information_required.applications_at_time)
-    # nowTimeStamp = 0
-    # print(information_required.applications_at_now(nowTimeStamp))
-    # print(information_required.views_required_by_application_at_now(nowTimeStamp))
-    # print(information_required.information_required_by_views_at_now(nowTimeStamp))
-
-    """Print the result."""
-    """
-    application:
-    [2, 9, 6, 4, 0, 3, 1, 7, 8, 5]
-
-    information_list:
-    [{'type': 2, 'data_size': 0.5488135039273248, 'update_interval': 1}, 
-    {'type': 8, 'data_size': 0.7151893663724195, 'update_interval': 2}, 
-    {'type': 4, 'data_size': 0.6027633760716439, 'update_interval': 2}, 
-    {'type': 9, 'data_size': 0.5448831829968969, 'update_interval': 1}, 
-    {'type': 1, 'data_size': 0.4236547993389047, 'update_interval': 2}, 
-    {'type': 6, 'data_size': 0.6458941130666561, 'update_interval': 2}, 
-    {'type': 7, 'data_size': 0.4375872112626925, 'update_interval': 2}, 
-    {'type': 3, 'data_size': 0.8917730007820798, 'update_interval': 2}, 
-    {'type': 0, 'data_size': 0.9636627605010293, 'update_interval': 2}, 
-    {'type': 5, 'data_size': 0.3834415188257777, 'update_interval': 2}]
-
-    views:
-    [
-    [2, 9], 
-    [4, 1], 
-    [5], 
-    [3], 
-    [9, 5], 
-    [8, 1], 
-    [8, 5], 
-    [8, 6], 
-    [8, 4], 
-    [8]]
-
-    [[7], 
-    [0, 4], 
-    [0, 5, 9, 2, 3, 4, 8, 7, 1], 
-    [5], 
-    [5, 4, 7, 9, 1, 3, 8, 6, 0], 
-    [1, 2, 7, 3, 6, 5, 9], 
-    [7, 4, 1, 3, 8], 
-    [1, 7, 8, 4], 
-    [5], 
-    [3, 8, 6, 4, 7]]
-
-    [7]
-
-    [7]
-
-    [{'type': 0, 'data_size': 0.9636627605010293, 'update_interval': 2}, {'type': 7, 'data_size': 0.4375872112626925, 'update_interval': 2}]
-    """

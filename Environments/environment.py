@@ -33,10 +33,10 @@ class vehicularNetworkEnvConfig:
     min_sensing_cost: float = 0.1
     max_sensing_cost: float = 1.0
     transmission_power: float = 100.0  # mW
-    vehicle_list_seeds: List[int] = []
+    vehicle_list_seeds: List[int] = dataclasses.field(default_factory=list)
 
     """"Edge related."""
-    edge_no: int = 0
+    edge_index: int = 0
     edge_location_x: float = 500.0   # meters
     edge_location_y: float = 500.0   # meters
     communication_range: float = 500.0  # meters
@@ -45,7 +45,7 @@ class vehicularNetworkEnvConfig:
     """View related."""
     view_number: int = 30
     required_information_number: int = 10  # the maximume number of information required by one view.
-    view_list_seeds: List[int] = []
+    view_list_seeds: List[int] = dataclasses.field(default_factory=list)
 
     """Application related."""
     application_number: int = 0
@@ -107,7 +107,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         )
 
         self._edge_node: edge = edge(
-            edge_no=self._config.edge_no,
+            edge_index=self._config.edge_index,
             information_number=self._config.information_number,
             edge_location=location(
                 x=self._config.edge_location_x,
@@ -400,7 +400,7 @@ class vehicularNetworkEnv(dm_env.Environment):
                 infor = informationPacket(
                     type=sensed_information_type[information_index],
                     vehicle_index=i,
-                    edge_no=self._edge_node.get_edge_no(),
+                    edge_index=self._edge_node.get_edge_index(),
                     updating_moment=updating_moments[information_index],
                     inter_arrival_interval=arrival_intervals[information_index],
                     arrival_moment=arrival_moments[information_index],

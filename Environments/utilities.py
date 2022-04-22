@@ -476,131 +476,17 @@ class v2iTransmission(object):
                 start_time = np.floor(self._arrival_moments[i] + self._queuing_times[i])
                 vehicle_loaction = self._vehicle_trajectory.get_location(start_time)
                 distance = vehicle_loaction.get_distance(self._edge_location)
-                SNR = v2iTransmission.compute_SNR(
+                SNR = compute_SNR(
                     white_gaussian_noise=self._white_gaussian_noise, 
                     channel_fading_gain=self.generate_channel_fading_gain(),
                     distance=distance,
                     path_loss_exponent=self._path_loss_exponent,
                     transmission_power=self._transmission_power
                 )
-                tranmission_rate = v2iTransmission.compute_transmission_rate(
+                tranmission_rate = compute_transmission_rate(
                     SNR, self._bandwdith_allocation[self._vehicle_index])
                 transmission_times[i] = self._information_list.get_information_siez_by_type(self._sensed_information_type[i]) / tranmission_rate
         return transmission_times
-
-    @staticmethod
-    def get_minimum_transmission_power(
-        white_gaussian_noise: int,
-        mean_channel_fading_gain: float,
-        second_moment_channel_fading_gain: float,
-        distance: float,
-        path_loss_exponent: int,
-        transmission_power: float,
-        SNR_target: float,
-        probabiliity_threshold: float) -> float:
-        """
-        Get the minimum transmission power of the vehicle to the edge
-        Args:
-            white_gaussian_noise: the white gaussian noise of the channel
-            mean_channel_fading_gain: the mean channel fading gain
-            second_moment_channel_fading_gain: the second moment channel fading gain
-            distance: the distance between the vehicle and the edge
-            path_loss_exponent: the path loss exponent
-            transmission_power: the transmission power of the vehicle
-            SNR_target: the target SNR
-            probabiliity_threshold: the probability threshold
-        Returns:
-            minimum_transmission_power: the minimum transmission power of the vehicle to the edge
-        """
-
-        minimum_transmission_power = transmission_power
-        channel_fading_gains = v2iTransmission.generate_channel_fading_gain(
-            mean_channel_fading_gain=mean_channel_fading_gain,
-            second_moment_channel_fading_gain=second_moment_channel_fading_gain,
-            size=100
-        )
-        while True:
-            probabiliity = v2iTransmission.compute_successful_tansmission_probability(
-                white_gaussian_noise=white_gaussian_noise,
-                channel_fading_gains=channel_fading_gains,
-                distance=distance,
-                path_loss_exponent=path_loss_exponent,
-                transmission_power=minimum_transmission_power,
-                SNR_target=SNR_target
-            )
-            if probabiliity <= probabiliity_threshold:
-                break
-            else:
-                minimum_transmission_power -= minimum_transmission_power * 0.01
-
-        return minimum_transmission_power
-        
-    @staticmethod
-    def compute_successful_tansmission_probability(
-        white_gaussian_noise: int,
-        channel_fading_gains: np.ndarray,
-        distance: float,
-        path_loss_exponent: int,
-        transmission_power: float,
-        SNR_target: float) -> float:
-        """
-        Compute the sussessful transmission probability of the vehicle to the edge
-        Args:
-            white_gaussian_noise: the white gaussian noise of the channel
-            channel_fading_gains: the channel fading gains
-            distance: the distance between the vehicle and the edge
-            path_loss_exponent: the path loss exponent
-            transmission_power: the transmission power of the vehicle
-            SNR_target: the target SNR
-        Returns:
-            sussessful_tansmission_probability: the sussessful transmission probability of the vehicle to the edge
-        """
-        successful_transmission_number = 0
-        total_number = 0
-        for channel_fading_gain in channel_fading_gains:
-            total_number += 1
-            SNR = v2iTransmission.compute_SNR(
-                white_gaussian_noise=white_gaussian_noise,
-                channel_fading_gain=channel_fading_gain,
-                distance=distance,
-                path_loss_exponent=path_loss_exponent,
-                transmission_power=transmission_power
-            )
-            if SNR >= SNR_target:
-                successful_transmission_number += 1
-        return successful_transmission_number / total_number
-
-    @staticmethod
-    def compute_SNR(
-        white_gaussian_noise: int,
-        channel_fading_gain: float,
-        distance: float,
-        path_loss_exponent: int,
-        transmission_power: float) -> float:
-        """
-        Compute the SNR of a vehicle transmission
-        Args:
-            white_gaussian_noise: the white gaussian noise of the channel, e.g., -70 dBm
-            channel_fading_gain: the channel fading gain, e.g., Gaussion distribution with mean 2 and variance 0.4
-            distance: the distance between the vehicle and the edge, e.g., 300 meters
-            path_loss_exponent: the path loss exponent, e.g., 3
-            transmission_power: the transmission power of the vehicle, e.g., 10 mW
-        Returns:
-            SNR: the SNR of the transmission
-        """
-        return (1.0 / v2iTransmission.cover_dBm_to_W(white_gaussian_noise)) * \
-            np.power(np.abs(channel_fading_gain), 2) * \
-            1.0 / (np.power(distance, path_loss_exponent)) * \
-            v2iTransmission.cover_mW_to_W(transmission_power)
-
-    @staticmethod
-    def compute_transmission_rate(SNR, bandwidth):
-        """
-        :param SNR:
-        :param bandwidth:
-        :return: transmission rate measure by Byte/s
-        """
-        return int(v2iTransmission.cover_MHz_to_Hz(bandwidth) * np.log2(1 + SNR) / 8)
 
     def generate_channel_fading_gain(self):
         """
@@ -614,38 +500,143 @@ class v2iTransmission(object):
         )
         return channel_fading_gain
 
-    @staticmethod
-    def generate_channel_fading_gain(mean_channel_fading_gain, second_moment_channel_fading_gain, size: int = 1):
-        channel_fading_gain = np.random.normal(loc=mean_channel_fading_gain, scale=second_moment_channel_fading_gain, size=size)
-        return channel_fading_gain
 
-    @staticmethod
-    def cover_MHz_to_Hz(MHz):
-        return MHz * 10e6
+def get_minimum_transmission_power(
+    white_gaussian_noise: int,
+    mean_channel_fading_gain: float,
+    second_moment_channel_fading_gain: float,
+    distance: float,
+    path_loss_exponent: int,
+    transmission_power: float,
+    SNR_target: float,
+    probabiliity_threshold: float) -> float:
+    """
+    Get the minimum transmission power of the vehicle to the edge
+    Args:
+        white_gaussian_noise: the white gaussian noise of the channel
+        mean_channel_fading_gain: the mean channel fading gain
+        second_moment_channel_fading_gain: the second moment channel fading gain
+        distance: the distance between the vehicle and the edge
+        path_loss_exponent: the path loss exponent
+        transmission_power: the transmission power of the vehicle
+        SNR_target: the target SNR
+        probabiliity_threshold: the probability threshold
+    Returns:
+        minimum_transmission_power: the minimum transmission power of the vehicle to the edge
+    """
 
-    @staticmethod
-    def cover_ratio_to_dB(ratio):
-        return 10 * np.log10(ratio)
+    minimum_transmission_power = transmission_power
+    channel_fading_gains = generate_channel_fading_gain(
+        mean_channel_fading_gain=mean_channel_fading_gain,
+        second_moment_channel_fading_gain=second_moment_channel_fading_gain,
+        size=100
+    )
+    while True:
+        probabiliity = compute_successful_tansmission_probability(
+            white_gaussian_noise=white_gaussian_noise,
+            channel_fading_gains=channel_fading_gains,
+            distance=distance,
+            path_loss_exponent=path_loss_exponent,
+            transmission_power=minimum_transmission_power,
+            SNR_target=SNR_target
+        )
+        if probabiliity <= probabiliity_threshold:
+            break
+        else:
+            minimum_transmission_power -= minimum_transmission_power * 0.01
 
-    @staticmethod
-    def cover_dB_to_ratio(dB):
-        return np.power(10, (dB / 10))
+    return minimum_transmission_power
+    
 
-    @staticmethod
-    def cover_dBm_to_W(dBm):
-        return np.power(10, (dBm / 10)) / 1000
+def compute_successful_tansmission_probability(
+    white_gaussian_noise: int,
+    channel_fading_gains: np.ndarray,
+    distance: float,
+    path_loss_exponent: int,
+    transmission_power: float,
+    SNR_target: float) -> float:
+    """
+    Compute the sussessful transmission probability of the vehicle to the edge
+    Args:
+        white_gaussian_noise: the white gaussian noise of the channel
+        channel_fading_gains: the channel fading gains
+        distance: the distance between the vehicle and the edge
+        path_loss_exponent: the path loss exponent
+        transmission_power: the transmission power of the vehicle
+        SNR_target: the target SNR
+    Returns:
+        sussessful_tansmission_probability: the sussessful transmission probability of the vehicle to the edge
+    """
+    successful_transmission_number = 0
+    total_number = 0
+    for channel_fading_gain in channel_fading_gains:
+        total_number += 1
+        SNR = compute_SNR(
+            white_gaussian_noise=white_gaussian_noise,
+            channel_fading_gain=channel_fading_gain,
+            distance=distance,
+            path_loss_exponent=path_loss_exponent,
+            transmission_power=transmission_power
+        )
+        if SNR >= SNR_target:
+            successful_transmission_number += 1
+    return successful_transmission_number / total_number
 
-    @staticmethod
-    def cover_W_to_dBm(W):
-        return 10 * np.log10(W * 1000)
 
-    @staticmethod
-    def cover_W_to_mW(W):
-        return W * 1000
+def compute_SNR(
+    white_gaussian_noise: int,
+    channel_fading_gain: float,
+    distance: float,
+    path_loss_exponent: int,
+    transmission_power: float) -> float:
+    """
+    Compute the SNR of a vehicle transmission
+    Args:
+        white_gaussian_noise: the white gaussian noise of the channel, e.g., -70 dBm
+        channel_fading_gain: the channel fading gain, e.g., Gaussion distribution with mean 2 and variance 0.4
+        distance: the distance between the vehicle and the edge, e.g., 300 meters
+        path_loss_exponent: the path loss exponent, e.g., 3
+        transmission_power: the transmission power of the vehicle, e.g., 10 mW
+    Returns:
+        SNR: the SNR of the transmission
+    """
+    return (1.0 / cover_dBm_to_W(white_gaussian_noise)) * \
+        np.power(np.abs(channel_fading_gain), 2) * \
+        1.0 / (np.power(distance, path_loss_exponent)) * \
+        cover_mW_to_W(transmission_power)
 
-    @staticmethod
-    def cover_mW_to_W(mW):
-        return mW / 1000
+def compute_transmission_rate(SNR, bandwidth) -> float:
+    """
+    :param SNR:
+    :param bandwidth:
+    :return: transmission rate measure by Byte/s
+    """
+    return float(cover_MHz_to_Hz(bandwidth) * np.log2(1 + SNR) / 8)
+
+def generate_channel_fading_gain(mean_channel_fading_gain, second_moment_channel_fading_gain, size: int = 1):
+    channel_fading_gain = np.random.normal(loc=mean_channel_fading_gain, scale=second_moment_channel_fading_gain, size=size)
+    return channel_fading_gain
+
+def cover_MHz_to_Hz(MHz):
+    return MHz * 10e6
+
+def cover_ratio_to_dB(ratio):
+    return 10 * np.log10(ratio)
+
+def cover_dB_to_ratio(dB):
+    return np.power(10, (dB / 10))
+
+def cover_dBm_to_W(dBm):
+    return np.power(10, (dBm / 10)) / 1000
+
+def cover_W_to_dBm(W):
+    return 10 * np.log10(W * 1000)
+
+def cover_W_to_mW(W):
+    return W * 1000
+
+def cover_mW_to_W(mW):
+    return mW / 1000
 
 
 if __name__ == '__main__':
