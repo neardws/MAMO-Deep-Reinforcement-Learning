@@ -2,6 +2,7 @@ from cmath import inf
 import numpy as np
 import pandas as pd
 from typing import List, Tuple, Optional
+from Log.logger import myapp
 
 def softmax(x: list) -> list:
     """ softmax function.
@@ -241,6 +242,15 @@ class vehicle(object):
     def get_transmission_power(self) -> float:
         return self._transmission_power
 
+    def get_sensed_information_type(self, sensed_information: Optional[List[int]]) -> np.ndarray:
+        sensed_information_type = np.zeros((self._sensed_information_number,))
+        for i in range(self._sensed_information_number):
+            if sensed_information[i] == 1:
+                sensed_information_type[i] = self.get_information_canbe_sensed()[i]
+            else:
+                sensed_information_type[i] = -1
+        return sensed_information_type
+
     def information_types_can_be_sensed(self) -> List[int]:
         np.random.seed(self._seed)
         return list(np.random.choice(
@@ -255,9 +265,6 @@ class vehicle(object):
             high=self._max_sensing_cost,
             size=self._sensed_information_number
         ))
-
-    def get_information_can_be_sensed(self) -> List[int]:
-        return self._information_canbe_sensed
 
     def get_sensing_cost(self) -> List[float]:
         return self._sensing_cost
@@ -279,6 +286,9 @@ class vehicle(object):
     
     def get_information_canbe_sensed(self) -> List[int]:
         return self._information_canbe_sensed
+
+    def get_information_type_canbe_sensed(self, index: int) -> int:
+        return self._information_canbe_sensed[index]
     
     def get_vehicle_trajectory(self) -> trajectory:
         return self._vehicle_trajectory
@@ -354,11 +364,11 @@ class vehicleList(object):
             self._trajectories_file_name, 
             names=['vehicle_id', 'time', 'longitude', 'latitude'], header=0)
 
-        print(df)
+        # print(df)
 
         max_vehicle_id = df['vehicle_id'].max()
-        print("max_vehicle_id:", max_vehicle_id)
-        print("the type of max_vehicle_id:", type(max_vehicle_id))
+        # print("max_vehicle_id:", max_vehicle_id)
+        # print("the type of max_vehicle_id:", type(max_vehicle_id))
 
         selected_vehicle_id = []
         for vehicle_id in range(int(max_vehicle_id)):
@@ -668,7 +678,7 @@ class informationList(object):
         update_interval_up_bound: int,
         vehicle_list: vehicleList,
         edge_node: edge,
-        additive_white_gaussian_noise: int,
+        white_gaussian_noise: int,
         mean_channel_fading_gain: float,
         second_moment_channel_fading_gain: float,
         path_loss_exponent: int) -> None:
@@ -725,7 +735,7 @@ class informationList(object):
             self.compute_mean_and_second_moment_service_time_of_types(
                 vehicle_list=vehicle_list,
                 edge_node=edge_node,
-                additive_white_gaussian_noise=additive_white_gaussian_noise,
+                white_gaussian_noise=white_gaussian_noise,
                 mean_channel_fading_gain=mean_channel_fading_gain,
                 second_moment_channel_fading_gain=second_moment_channel_fading_gain,
                 path_loss_exponent=path_loss_exponent
@@ -773,17 +783,17 @@ class informationList(object):
     def get_second_moment_service_time_of_types(self) -> np.ndarray:
         return self._second_moment_service_time_of_types
 
-    def get_mean_service_time_by_vehicle_and_type(self, vehicle_index, type) -> float:
-        return self._mean_service_time_of_types[vehicle_index][type]
+    def get_mean_service_time_by_vehicle_and_type(self, vehicle_index, data_type_index) -> float:
+        return self._mean_service_time_of_types[vehicle_index][data_type_index]
 
-    def get_second_moment_service_time_by_vehicle_and_type(self, vehicle_index, type) -> float:
-        return self._second_moment_service_time_of_types[vehicle_index][type]
+    def get_second_moment_service_time_by_vehicle_and_type(self, vehicle_index, data_type_index) -> float:
+        return self._second_moment_service_time_of_types[vehicle_index][data_type_index]
 
     def compute_mean_and_second_moment_service_time_of_types(
         self, 
         vehicle_list: vehicleList,
         edge_node: edge,
-        additive_white_gaussian_noise,
+        white_gaussian_noise,
         mean_channel_fading_gain,
         second_moment_channel_fading_gain,
         path_loss_exponent) -> Tuple[np.ndarray, np.ndarray]:
@@ -793,20 +803,18 @@ class informationList(object):
         Args:
             vehicle_list: the vehicle list.
             edge_node: the edge node.
-            additive_white_gaussian_noise: the additive white gaussian noise.
+            white_gaussian_noise: the additive white gaussian noise.
             mean_channel_fading_gain: the mean channel fadding gain.
             second_moment_channel_fading_gain: the second channel fadding gain.
             path_loss_exponent: the path loss exponent.
         Returns:
             the mean and second moment service time of each type of information.
         """
-        from Environments.utilities import cover_dBm_to_W, generate_channel_fading_gain, compute_SNR, compute_transmission_rate
+        from Environments.utilities import generate_channel_fading_gain, compute_SNR, compute_transmission_rate
 
         vehicle_number = vehicle_list.get_number()
         mean_service_time_of_types = np.zeros(shape=(vehicle_number, self._data_types_number))
         second_moment_service_time_of_types = np.zeros(shape=(vehicle_number, self._data_types_number))
-
-        white_gaussian_noise = cover_dBm_to_W(additive_white_gaussian_noise)
 
         for vehicle_index in range(vehicle_number):
             vehicle = vehicle_list.get_vehicle(vehicle_index)
@@ -814,7 +822,6 @@ class informationList(object):
                 transmission_time = []
                 for location in vehicle.get_vehicle_trajectory().get_locations():
                     distance = location.get_distance(edge_node.get_edge_location())
-                    # print(distance)
                     channel_fading_gain = generate_channel_fading_gain(
                         mean_channel_fading_gain=mean_channel_fading_gain,
                         second_moment_channel_fading_gain=second_moment_channel_fading_gain
@@ -826,6 +833,12 @@ class informationList(object):
                         path_loss_exponent=path_loss_exponent,
                         transmission_power=vehicle.get_transmission_power()
                     )
+                    myapp.info(f"white_gaussian_noise: {white_gaussian_noise}")
+                    myapp.info(f"channel_fading_gain: {channel_fading_gain}")
+                    myapp.info(f"distance: {distance}")
+                    myapp.info(f"path_loss_exponent: {path_loss_exponent}")
+                    myapp.info(f"transmission_power: {vehicle.get_transmission_power()}")
+                    myapp.info(f"SNR: {SNR}")
                     bandwidth = edge_node.get_bandwidth() / vehicle_number
                     # print(bandwidth)
                     # print(self.get_information_siez_by_type(data_type_index))
@@ -874,7 +887,7 @@ class vehicleAction(object):
         # if not self.check_action(now_time, vehicle_list):
         #     raise ValueError("The action is not valid.")
 
-    def check_action(self, nowTimeSlot: int, vehicleList: vehicleList) -> bool:
+    def check_action(self, nowTimeSlot: int, vehicle_list: vehicleList) -> bool:
         """ check the action.
         Args:
             nowTimeSlot: the time of the action.
@@ -883,11 +896,10 @@ class vehicleAction(object):
         """
         if self._action_time != nowTimeSlot:
             return False
-        if self._vehicle_index >= len(vehicleList.get_vehicle_list()):
+        if self._vehicle_index >= len(vehicle_list.get_vehicle_list()):
             return False
-        vehicle = vehicleList.get_vehicle(self._vehicle_index)
-        if not (len(self._sensed_information) == len(self._sensing_frequencies) \
-            == len(self._uploading_priorities) == len(vehicle.get_sensed_information_number())):
+        vehicle = vehicle_list.get_vehicle(self._vehicle_index)
+        if not (len(self._sensed_information) == len(self._sensing_frequencies) == len(self._uploading_priorities)):
             return False
         if self._transmission_power > vehicle.get_transmission_power():
             return False
@@ -937,7 +949,6 @@ class vehicleAction(object):
         """
         from Environments.utilities import get_minimum_transmission_power
 
-
         sensed_information = np.zeros(shape=(sensed_information_number,))
         sensing_frequencies = np.zeros(shape=(sensed_information_number,))
         uploading_priorities = np.zeros(shape=(sensed_information_number,))
@@ -951,7 +962,7 @@ class vehicleAction(object):
             if sensed_information[index] == 1:
                 sensing_frequencies[index] = values / information_list.get_mean_service_time_by_vehicle_and_type(
                     vehicle_index=vehicle_index,
-                    data_type_index=vehicle_list.get_vehicle(vehicle_index).get_information_canbe_sensed(index)
+                    data_type_index=vehicle_list.get_vehicle(vehicle_index).get_information_type_canbe_sensed(index)
                 )
         for index, values in enumerate(network_output[2*sensed_information_number: 3*sensed_information_number]):
             if sensed_information[index] == 1:

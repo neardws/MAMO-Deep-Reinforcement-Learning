@@ -260,15 +260,6 @@ class vehicleTrajectoriesProcessor(object):
     def get_latitude_max(self) -> float:
         return self._latitude_max
 
-"""Called by two classes:"""
-def get_sensed_information_type(sensed_information_number, sensed_information, vehicle) -> np.ndarray:
-        sensed_information_type = np.zeros((sensed_information_number,))
-        for i in range(sensed_information_number):
-            if sensed_information[i] == 1:
-                sensed_information_type[i] = vehicle.get_information_canbe_sensed()[i]
-            else:
-                sensed_information_type[i] = -1
-        return sensed_information_type
 
 class sensingAndQueuing(object):
     """This class is used to get the queue time of the edge with the highest queue length"""
@@ -282,8 +273,7 @@ class sensingAndQueuing(object):
         self._sensing_frequencies = vehicle_action.get_sensing_frequencies()
         self._uploading_priorities = vehicle_action.get_uploading_priorities()
 
-        self._sensed_information_type = get_sensed_information_type(
-            self._sensed_information_number, self._sensed_information, vehicle)
+        self._sensed_information_type = vehicle.get_sensed_information_type(self._sensed_information)
 
         self._arrival_intervals = self.compute_interval_arrival_intervals()
         self._arrival_moments = self.compute_arrival_moments(self._arrival_intervals)
@@ -378,11 +368,11 @@ class sensingAndQueuing(object):
             sensing_frequency = action["sensing_frequency"]
             mean_service_time = information_list.get_mean_service_time_by_vehicle_and_type(
                 vehicle_index=self._vehicle_index, 
-                type=data_type
+                data_type_index=data_type
             )
             second_moment_service_time = information_list.get_second_moment_service_time_by_vehicle_and_type(
                 vehicle_index=self._vehicle_index,
-                type=data_type
+                data_type_index=data_type
             )
             """if the information is in the head of queue, then the queuing time is 0"""
             if index == 0:
@@ -446,8 +436,7 @@ class v2iTransmission(object):
 
         self._information_list = information_list
         
-        self._sensed_information_type = get_sensed_information_type(
-            self._sensed_information_number, self._sensed_information, vehicle)
+        self._sensed_information_type = vehicle.get_sensed_information_type(self._sensed_information)
 
         self._bandwdith_allocation = edge_action.get_bandwidth_allocation()
 
@@ -478,7 +467,7 @@ class v2iTransmission(object):
                 distance = vehicle_loaction.get_distance(self._edge_location)
                 SNR = compute_SNR(
                     white_gaussian_noise=self._white_gaussian_noise, 
-                    channel_fading_gain=self.generate_channel_fading_gain(),
+                    channel_fading_gain=generate_channel_fading_gain(self._mean_channel_fading_gain, self._second_moment_channel_fading_gain),
                     distance=distance,
                     path_loss_exponent=self._path_loss_exponent,
                     transmission_power=self._transmission_power
@@ -487,18 +476,6 @@ class v2iTransmission(object):
                     SNR, self._bandwdith_allocation[self._vehicle_index])
                 transmission_times[i] = self._information_list.get_information_siez_by_type(self._sensed_information_type[i]) / tranmission_rate
         return transmission_times
-
-    def generate_channel_fading_gain(self):
-        """
-        Generate the channel fading gain
-        :return:
-            channel_fading_gain: the channel fading gain
-        """
-        channel_fading_gain = np.random.normal(
-            loc=self._mean_channel_fading_gain,
-            scale=self._second_moment_channel_fading_gain
-        )
-        return channel_fading_gain
 
 
 def get_minimum_transmission_power(
@@ -578,7 +555,7 @@ def compute_successful_tansmission_probability(
             path_loss_exponent=path_loss_exponent,
             transmission_power=transmission_power
         )
-        if SNR >= SNR_target:
+        if cover_ratio_to_dB(SNR) >= SNR_target:
             successful_transmission_number += 1
     return successful_transmission_number / total_number
 
@@ -609,56 +586,37 @@ def compute_transmission_rate(SNR, bandwidth) -> float:
     """
     :param SNR:
     :param bandwidth:
-    :return: transmission rate measure by Byte/s
+    :return: transmission rate measure by bit/s
     """
-    return float(cover_MHz_to_Hz(bandwidth) * np.log2(1 + SNR) / 8)
+    return float(cover_MHz_to_Hz(bandwidth) * np.log2(1 + SNR))
 
 def generate_channel_fading_gain(mean_channel_fading_gain, second_moment_channel_fading_gain, size: int = 1):
     channel_fading_gain = np.random.normal(loc=mean_channel_fading_gain, scale=second_moment_channel_fading_gain, size=size)
     return channel_fading_gain
 
-def cover_MHz_to_Hz(MHz):
-    return MHz * 10e6
+def cover_bps_to_Mbps(bps: float) -> float:
+    return bps / 1000000
 
-def cover_ratio_to_dB(ratio):
+def cover_Mbps_to_bps(Mbps: float) -> float:
+    return Mbps * 1000000
+
+def cover_MHz_to_Hz(MHz: float) -> float:
+    return MHz * 1e6
+
+def cover_ratio_to_dB(ratio: float) -> float:
     return 10 * np.log10(ratio)
 
-def cover_dB_to_ratio(dB):
+def cover_dB_to_ratio(dB: float) -> float:
     return np.power(10, (dB / 10))
 
-def cover_dBm_to_W(dBm):
+def cover_dBm_to_W(dBm: float) -> float:
     return np.power(10, (dBm / 10)) / 1000
 
-def cover_W_to_dBm(W):
+def cover_W_to_dBm(W: float) -> float:
     return 10 * np.log10(W * 1000)
 
-def cover_W_to_mW(W):
+def cover_W_to_mW(W: float) -> float:
     return W * 1000
 
-def cover_mW_to_W(mW):
+def cover_mW_to_W(mW: float) -> float:
     return mW / 1000
-
-
-if __name__ == '__main__':
-
-    trajectory_processor = vehicleTrajectoriesProcessor(
-        file_name='/home/neardws/Documents/AoV-Journal-Algorithm/CSV/gps_20161116', 
-        longitude_min=104.04565967220308, 
-        latitude_min=30.654605745741608, 
-        map_width=1000.0,
-        time_start='2016-11-16 08:00:00', 
-        time_end='2016-11-16 08:05:00', 
-        out_file='/home/neardws/Documents/AoV-Journal-Algorithm/CSV/trajectories_20161116_0800_0850.csv',
-    )
-    print("longitude_min:\n", trajectory_processor.get_longitude_min())
-    print("longitude_max:\n", trajectory_processor.get_longitude_max())
-    print("latitude_min:\n", trajectory_processor.get_latitude_min())
-    print("latitude_max:\n", trajectory_processor.get_latitude_max())
-    
-    # new_longitude_min, new_latitude_min = trajectory_processor.gcj02_to_wgs84(trajectory_processor._longitude_min, trajectory_processor._latitude_min)
-    print("distance:\n", trajectory_processor.get_distance(
-        lng1=trajectory_processor.get_longitude_min(),
-        lat1=trajectory_processor.get_latitude_min(),
-        lng2=trajectory_processor.get_longitude_max(),
-        lat2=trajectory_processor.get_latitude_max()
-    ) / np.sqrt(2))

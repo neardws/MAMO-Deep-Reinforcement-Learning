@@ -1,13 +1,13 @@
 import pytest
+import numpy as np
 from Test.environmentConfig_test import vehicularNetworkEnvConfig
-from Environments.dataStruct import applicationList, edge, informationList, informationRequirements, softmax, timeSlots, informationPacket, location, trajectory, vehicle, vehicleList, viewList
+from Environments.dataStruct import applicationList, edge, informationList, informationRequirements, softmax, timeSlots, informationPacket, location, trajectory, vehicle, vehicleAction, vehicleList, viewList
 
 config = vehicularNetworkEnvConfig()
 
 @pytest.mark.skip(reason="Passed.")
-@pytest.mark.parametrize("list_a", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-def test_softmax(list_a):
-    assert sum(softmax(list_a)) > 1 - 1e-6 and sum(softmax(list_a)) < 1 + 1e-6
+def test_softmax():
+    assert sum(softmax([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])) > 1 - 1e-6 and sum(softmax([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])) < 1 + 1e-6
 
 time_slots = timeSlots(
     start=config.time_slot_start, 
@@ -19,7 +19,7 @@ time_slots = timeSlots(
 def test_timeSlots():
     assert time_slots.is_end() == False
     assert time_slots.get_slot_length() == 1
-    assert time_slots.get_number() == 10
+    assert time_slots.get_number() == 300
     assert time_slots.now() == 0
     time_slots.add_time()
     assert time_slots.now() == 1
@@ -51,13 +51,11 @@ def test_informationPacket():
     assert information_packet.get_received_moment() == 9.
 
 
-
-
 @pytest.mark.skip(reason="Passed.")
 def test_trajectory():
     vehicle_trajectory = trajectory(
         timeSlots=time_slots,
-        locations=list(location(1, i) for i in range(10)),
+        locations=list(location(1, i) for i in range(300)),
     )
     assert vehicle_trajectory.get_location(0).get_x() == 1.
     assert vehicle_trajectory.get_location(0).get_y() == 0.
@@ -95,6 +93,13 @@ def test_vehicle_list():
         print(vehicle.get_distance_between_edge(time_slots.get_start(), edge_location=edge_node.get_edge_location()))
         print(vehicle.get_distance_between_edge(time_slots.get_end(), edge_location=edge_node.get_edge_location()))
         print("\n")
+
+@pytest.mark.skip(reason="Passed.")
+def test_vehicle():
+    v = vehicle_list.get_vehicle_list()[0]
+    print(v.get_information_canbe_sensed())
+    print(v.get_sensed_information_type(sensed_information=[0, 1, 0, 0, 0, 0, 0, 0, 0, 0]))
+
 
 
 application_list = applicationList(
@@ -135,12 +140,13 @@ information_list = informationList(
     update_interval_up_bound=config.update_interval_up_bound,
     vehicle_list=vehicle_list,
     edge_node=edge_node,
-    additive_white_gaussian_noise=config.white_gaussian_noise,
+    white_gaussian_noise=config.white_gaussian_noise,
     mean_channel_fading_gain=config.mean_channel_fading_gain,
     second_moment_channel_fading_gain=config.second_moment_channel_fading_gain,
     path_loss_exponent=config.path_loss_exponent,
 )
 
+pytest.mark.skip(reason="Passed.")
 def test_information_list():
     print(information_list.get_mean_service_time_of_types())
     print(information_list.get_second_moment_service_time_of_types())
@@ -155,8 +161,53 @@ def test_information_list():
 #     seed=config.information_requirements_seed,
 # )
 
+vehicle_action = vehicleAction(
+    vehicle_index=0,
+    now_time=0,
+    sensed_information=[1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    sensing_frequencies=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    uploading_priorities=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    transmission_power=0.3, 
+    action_time=0
+)
 
+@pytest.mark.skip(reason="Passed.")
+# notice that vehicle.get_sensed_information_number() is not equal to len(self._sensed_information)
+def test_vehicle_action():
+    assert vehicle_action._action_time == 0
+    assert vehicle_action._vehicle_index <= len(vehicle_list.get_vehicle_list())
+    vehicle = vehicle_list.get_vehicle(vehicle_action._vehicle_index)
+    assert len(vehicle_action._sensed_information) == len(vehicle_action._sensing_frequencies) == len(vehicle_action._uploading_priorities)
+    assert vehicle_action._transmission_power <= vehicle.get_transmission_power()
+    assert vehicle_action.check_action(nowTimeSlot=0, vehicle_list=vehicle_list) == True
 
-
-
+@pytest.mark.skip(reason="Passed.")
+def test_generate_vehicle_action():
+    np.random.seed(0)
+    random_action = np.random.random(size=config.sensed_information_number*3+1)
+    print(random_action)
+    v_action: vehicleAction = vehicleAction.generate_from_np_array(
+        now_time=0,
+        vehicle_index=0,
+        vehicle_list=vehicle_list,
+        information_list=information_list,
+        sensed_information_number=config.sensed_information_number,
+        network_output=random_action,
+        white_gaussian_noise=config.white_gaussian_noise,
+        mean_channel_fading_gain=config.mean_channel_fading_gain,
+        second_moment_channel_fading_gain=config.second_moment_channel_fading_gain,
+        edge_location=edge_node.get_edge_location(),
+        path_loss_exponent=config.path_loss_exponent,
+        SNR_target=32.0,
+        probabiliity_threshold=config.probabiliity_threshold,
+        action_time=0
+    )
+    print("v_action.get_sensed_information():")
+    print(v_action.get_sensed_information())
+    print("v_action.get_sensing_frequencies():")
+    print(v_action.get_sensing_frequencies())
+    print("v_action.get_uploading_priorities():")
+    print(v_action.get_uploading_priorities())
+    print("v_action.get_transmission_power():")
+    print(v_action.get_transmission_power())
 

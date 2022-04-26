@@ -13,8 +13,8 @@ class vehicularNetworkEnvConfig:
     """Information list related."""
     information_number: int = 10
     information_list_seed: int = 0
-    data_size_low_bound: float = 100      # Bytes
-    data_size_up_bound: float = 1 * 1024 * 1024    # Bytes
+    data_size_low_bound: float = 100 * 8      # 100 bytes
+    data_size_up_bound: float = 1 * 1024 * 1024 * 8    # 1 MB
     data_types_number: int = 10
     update_interval_low_bound: int = 1
     update_interval_up_bound: int = 10
@@ -23,9 +23,9 @@ class vehicularNetworkEnvConfig:
     vehicle_number: int = 10
     trajectories_file_name: str = 'CSV/trajectories_20161116_0800_0850.csv'
     sensed_information_number: int = 3  # the maximum number of information, which can be sensed by the vehicle.
-    min_sensing_cost: float = 0.1
-    max_sensing_cost: float = 1.0
-    transmission_power: float = 1000000.0  # mW
+    min_sensing_cost: float = 0.01
+    max_sensing_cost: float = 0.99
+    transmission_power: float = 100.0  # mW
     vehicle_list_seeds: List[int] = dataclasses.field(default_factory=list)
 
     """"Edge related."""
@@ -64,7 +64,8 @@ class vehicularNetworkEnvConfig:
     mean_channel_fading_gain: float = 2.0 
     second_moment_channel_fading_gain: float = 0.4
     path_loss_exponent: int = 3
-    SNR_target: int = 1 # [1, 10]
+    SNR_target_low_bound: float = 30.0 # dB
+    SNR_target_up_bound: float = 35.0 # dB
     probabiliity_threshold: float = 0.9
 
     """Age of View related."""

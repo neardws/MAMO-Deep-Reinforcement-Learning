@@ -127,7 +127,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             update_interval_up_bound=self._config.update_interval_up_bound,
             vehicle_list=self._vehicle_list,
             edge_node=self._edge_node,
-            additive_white_gaussian_noise=self._config.white_gaussian_noise,
+            white_gaussian_noise=self._config.white_gaussian_noise,
             mean_channel_fading_gain=self._config.mean_channel_fading_gain,
             second_moment_channel_fading_gain=self._config.second_moment_channel_fading_gain,
             path_loss_exponent=self._config.path_loss_exponent,
