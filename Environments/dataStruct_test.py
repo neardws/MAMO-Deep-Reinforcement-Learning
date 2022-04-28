@@ -1,7 +1,8 @@
 import pytest
 import numpy as np
 from Test.environmentConfig_test import vehicularNetworkEnvConfig
-from Environments.dataStruct import applicationList, edge, informationList, informationRequirements, softmax, timeSlots, informationPacket, location, trajectory, vehicle, vehicleAction, vehicleList, viewList
+from Environments.dataStruct import applicationList, edge, informationList, softmax, timeSlots, informationPacket, location, trajectory, vehicleAction, vehicleList, viewList
+from Environments.dataStruct import informationRequirements, edgeAction
 
 config = vehicularNetworkEnvConfig()
 
@@ -146,20 +147,11 @@ information_list = informationList(
     path_loss_exponent=config.path_loss_exponent,
 )
 
-pytest.mark.skip(reason="Passed.")
+@pytest.mark.skip(reason="Passed.")
 def test_information_list():
     print(information_list.get_mean_service_time_of_types())
     print(information_list.get_second_moment_service_time_of_types())
-
-# information_requirements = informationRequirements(
-#     time_slots=time_slots,
-#     max_application_number=config.max_application_number,
-#     min_application_number=config.min_application_number,
-#     application_list=application_list,
-#     view_list=view_list,
-#     information_list=information_list,
-#     seed=config.information_requirements_seed,
-# )
+    print(information_list.get_mean_service_time_by_vehicle_and_type(vehicle_index=0, data_type_index=0))
 
 vehicle_action = vehicleAction(
     vehicle_index=0,
@@ -171,8 +163,8 @@ vehicle_action = vehicleAction(
     action_time=0
 )
 
-@pytest.mark.skip(reason="Passed.")
 # notice that vehicle.get_sensed_information_number() is not equal to len(self._sensed_information)
+@pytest.mark.skip(reason="Passed.")
 def test_vehicle_action():
     assert vehicle_action._action_time == 0
     assert vehicle_action._vehicle_index <= len(vehicle_list.get_vehicle_list())
@@ -181,27 +173,28 @@ def test_vehicle_action():
     assert vehicle_action._transmission_power <= vehicle.get_transmission_power()
     assert vehicle_action.check_action(nowTimeSlot=0, vehicle_list=vehicle_list) == True
 
+np.random.seed(0)
+random_action = np.random.random(size=config.sensed_information_number*3+1)
+v_action: vehicleAction = vehicleAction.generate_from_np_array(
+    now_time=10,
+    vehicle_index=0,
+    vehicle_list=vehicle_list,
+    information_list=information_list,
+    sensed_information_number=config.sensed_information_number,
+    network_output=random_action,
+    white_gaussian_noise=config.white_gaussian_noise,
+    mean_channel_fading_gain=config.mean_channel_fading_gain,
+    second_moment_channel_fading_gain=config.second_moment_channel_fading_gain,
+    edge_location=edge_node.get_edge_location(),
+    path_loss_exponent=config.path_loss_exponent,
+    SNR_target_low_bound=config.SNR_target_low_bound,
+    SNR_target_up_bound=config.SNR_target_up_bound,
+    probabiliity_threshold=config.probabiliity_threshold,
+    action_time=10
+)
+
 @pytest.mark.skip(reason="Passed.")
 def test_generate_vehicle_action():
-    np.random.seed(0)
-    random_action = np.random.random(size=config.sensed_information_number*3+1)
-    print(random_action)
-    v_action: vehicleAction = vehicleAction.generate_from_np_array(
-        now_time=0,
-        vehicle_index=0,
-        vehicle_list=vehicle_list,
-        information_list=information_list,
-        sensed_information_number=config.sensed_information_number,
-        network_output=random_action,
-        white_gaussian_noise=config.white_gaussian_noise,
-        mean_channel_fading_gain=config.mean_channel_fading_gain,
-        second_moment_channel_fading_gain=config.second_moment_channel_fading_gain,
-        edge_location=edge_node.get_edge_location(),
-        path_loss_exponent=config.path_loss_exponent,
-        SNR_target=32.0,
-        probabiliity_threshold=config.probabiliity_threshold,
-        action_time=0
-    )
     print("v_action.get_sensed_information():")
     print(v_action.get_sensed_information())
     print("v_action.get_sensing_frequencies():")
@@ -211,3 +204,52 @@ def test_generate_vehicle_action():
     print("v_action.get_transmission_power():")
     print(v_action.get_transmission_power())
 
+
+edge_action = edgeAction(
+    edge=edge_node,
+    now_time=0,
+    vehicle_number=config.vehicle_number,
+    bandwidth_allocation=np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]),
+    action_time=0,
+)
+
+@pytest.mark.skip(reason="Passed.")
+def test_edge_action():
+    assert edge_action.check_action(nowTimeSlot=0) == True
+    print(edge_action.get_bandwidth_allocation())
+
+
+np.random.seed(0)
+random_action = np.random.random(size=config.vehicle_number)
+# print(random_action)
+e_action = edgeAction.generate_from_np_array(
+    now_time=0,
+    edge_node=edge_node,
+    action_time=0,
+    network_output=random_action,
+    vehicle_number=config.vehicle_number,
+)
+
+@pytest.mark.skip(reason="Passed.")
+def test_generate_edge_action():
+    print("edge_action.get_bandwidth_allocation():")
+    print(e_action.get_bandwidth_allocation())
+    assert pytest.approx(e_action.get_bandwidth_allocation().sum()) == edge_node.get_bandwidth()
+
+information_requirements = informationRequirements(
+    time_slots=time_slots,
+    max_application_number=config.max_application_number,
+    min_application_number=config.min_application_number,
+    application_list=application_list,
+    view_list=view_list,
+    information_list=information_list,
+    seed=config.information_requirements_seed,
+)
+
+@pytest.mark.skip(reason="Passed.")
+def test_informationRequirements():
+    assert (information_requirements.applications_at_now(nowTimeStamp=0)) == [1, 9]
+    assert (information_requirements.views_required_by_application_at_now(nowTimeStamp=0)) == [28, 22]
+    assert (information_requirements.get_views_required_number_at_now(nowTimeStamp=0)) == 2
+    assert (information_requirements.get_information_type_required_by_views_at_now_at_now(nowTimeStamp=0)) == [[5, 4], [4, 8, 5, 7]]
+    assert list(information_requirements.get_information_required_at_now(nowTimeStamp=0)) == [0, 0, 0, 0, 1, 1, 0, 1, 1, 0]

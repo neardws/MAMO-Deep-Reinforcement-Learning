@@ -783,10 +783,10 @@ class informationList(object):
     def get_second_moment_service_time_of_types(self) -> np.ndarray:
         return self._second_moment_service_time_of_types
 
-    def get_mean_service_time_by_vehicle_and_type(self, vehicle_index, data_type_index) -> float:
+    def get_mean_service_time_by_vehicle_and_type(self, vehicle_index: int, data_type_index: int) -> float:
         return self._mean_service_time_of_types[vehicle_index][data_type_index]
 
-    def get_second_moment_service_time_by_vehicle_and_type(self, vehicle_index, data_type_index) -> float:
+    def get_second_moment_service_time_by_vehicle_and_type(self, vehicle_index: int, data_type_index: int) -> float:
         return self._second_moment_service_time_of_types[vehicle_index][data_type_index]
 
     def compute_mean_and_second_moment_service_time_of_types(
@@ -833,16 +833,13 @@ class informationList(object):
                         path_loss_exponent=path_loss_exponent,
                         transmission_power=vehicle.get_transmission_power()
                     )
-                    myapp.info(f"white_gaussian_noise: {white_gaussian_noise}")
-                    myapp.info(f"channel_fading_gain: {channel_fading_gain}")
-                    myapp.info(f"distance: {distance}")
-                    myapp.info(f"path_loss_exponent: {path_loss_exponent}")
-                    myapp.info(f"transmission_power: {vehicle.get_transmission_power()}")
-                    myapp.info(f"SNR: {SNR}")
+                    # myapp.info(f"white_gaussian_noise: {white_gaussian_noise}")
+                    # myapp.info(f"channel_fading_gain: {channel_fading_gain}")
+                    # myapp.info(f"distance: {distance}")
+                    # myapp.info(f"path_loss_exponent: {path_loss_exponent}")
+                    # myapp.info(f"transmission_power: {vehicle.get_transmission_power()}")
+                    # myapp.info(f"SNR: {SNR}")
                     bandwidth = edge_node.get_bandwidth() / vehicle_number
-                    # print(bandwidth)
-                    # print(self.get_information_siez_by_type(data_type_index))
-                    print(compute_transmission_rate(SNR, bandwidth))
                     if self.get_information_siez_by_type(data_type_index) / compute_transmission_rate(SNR, bandwidth) != inf:
                         transmission_time.append(self.get_information_siez_by_type(data_type_index) / compute_transmission_rate(SNR, bandwidth))
                 mean_service_time = np.array(transmission_time).mean()
@@ -933,7 +930,8 @@ class vehicleAction(object):
         second_moment_channel_fading_gain: float,
         edge_location: location,
         path_loss_exponent: int,
-        SNR_target: float,
+        SNR_target_low_bound: float,
+        SNR_target_up_bound: float,
         probabiliity_threshold: float,
         action_time: int):
         """ generate the vehicle action from the neural network output.
@@ -960,7 +958,7 @@ class vehicleAction(object):
         frequencies = softmax(list(frequencies))
         for index, values in enumerate(frequencies):
             if sensed_information[index] == 1:
-                sensing_frequencies[index] = values / information_list.get_mean_service_time_by_vehicle_and_type(
+                sensing_frequencies[index] = (values - 0.01) / information_list.get_mean_service_time_by_vehicle_and_type(
                     vehicle_index=vehicle_index,
                     data_type_index=vehicle_list.get_vehicle(vehicle_index).get_information_type_canbe_sensed(index)
                 )
@@ -971,6 +969,8 @@ class vehicleAction(object):
         sensed_information = list(sensed_information)
         sensing_frequencies = list(sensing_frequencies)
         uploading_priorities = list(uploading_priorities)
+
+        SNR_target = np.random.random() * (SNR_target_up_bound - SNR_target_low_bound) + SNR_target_low_bound
 
         minimum_transmission_power = get_minimum_transmission_power(
             white_gaussian_noise=white_gaussian_noise,
@@ -1045,6 +1045,13 @@ class informationRequirements(object):
         """
         return self._seed
     
+    def get_applications_at_times(self) -> List[List[int]]:
+        """ get the applications at each time.
+        Returns:
+            the applications at each time.
+        """
+        return self.applications_at_time
+
     def applications_at_times(self) -> List[List[int]]:
         """ get the applications at each time.
         Returns:
@@ -1119,7 +1126,7 @@ class informationRequirements(object):
             information_required = self._view_list.get_information_required_by_view_index(_)
             for information_index in information_required:
                 information_type_required.append(
-                    self._information_list.get_information_type_by_index[information_index]
+                    self._information_list.get_information_type_by_index(information_index)
                 ) 
             information_type_required_by_views_at_now.append(
                 information_type_required

@@ -71,7 +71,8 @@ class vehicularNetworkEnvConfig:
     mean_channel_fading_gain: float = 2.0 
     second_moment_channel_fading_gain: float = 0.4
     path_loss_exponent: int = 3
-    SNR_target: int = 1 # [1, 10]
+    SNR_target_low_bound: float = 30 # dB
+    SNR_target_up_bound: float = 35 # dB
     probabiliity_threshold: float = 0.9
 
     """Age of View related."""
@@ -322,7 +323,8 @@ class vehicularNetworkEnv(dm_env.Environment):
                     second_moment_channel_fading_gain=self._config.second_moment_channel_fading_gain,
                     edge_location=self._edge_node.get_edge_location(),
                     path_loss_exponent=self._config.path_loss_exponent,
-                    SNR_target=self._config.SNR_target,
+                    SNR_target_low_bound=self._config.SNR_target_low_bound,
+                    SNR_target_up_bound=self._config.SNR_target_up_bound,
                     probabiliity_threshold=self._config.probabiliity_threshold,
                     action_time=self._time_slots.now(),
                 )
