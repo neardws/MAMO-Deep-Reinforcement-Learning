@@ -2,6 +2,8 @@ from Environments.environment import vehicularNetworkEnv
 from Test.environmentConfig_test import vehicularNetworkEnvConfig
 
 config = vehicularNetworkEnvConfig()
+config.vehicle_list_seeds += [i for i in range(config.vehicle_number)]
+config.view_list_seeds += [i for i in range(config.view_number)]
 
 env = vehicularNetworkEnv(config)
 
@@ -16,3 +18,4 @@ def test_size():
         "reward_size: ", env._reward_size, "\n", 
         "vehicle_critic_network_action_size: ", env._vehicle_critic_network_action_size, "\n",
         "edge_critic_network_action_size", env._edge_critic_network_action_size, "\n")
+

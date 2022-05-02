@@ -118,6 +118,7 @@ def test_application_list():
 
 
 config.view_list_seeds += [i for i in range(config.view_number)]
+
 view_list = viewList(
     number=config.view_number,
     information_number=config.information_number,
