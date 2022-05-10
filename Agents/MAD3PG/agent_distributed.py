@@ -13,6 +13,8 @@ from acme.utils import lp_utils
 import launchpad as lp
 import reverb
 
+# Valid values of the "accelerator" argument.
+_ACCELERATORS = ('CPU', 'GPU', 'TPU')
 
 class MultiAgentDistributedDDPG:
     """Program definition for MAD3PG."""
@@ -26,6 +28,12 @@ class MultiAgentDistributedDDPG:
     ):
         """Initialize the MAD3PG agent."""
         self._config = config
+
+        self._accelerator = config.accelerator
+        if self._accelerator is not None and self._accelerator not in _ACCELERATORS:
+            raise ValueError(f'Accelerator must be one of {_ACCELERATORS}, '
+                            f'not "{self._accelerator}".')
+
         self._num_actors = num_actors
         self._num_caches = num_caches
         self._max_actor_steps = max_actor_steps
@@ -52,21 +60,26 @@ class MultiAgentDistributedDDPG:
         counter: counting.Counter,
     ):
         """The Learning part of the agent."""
+        
+        # If we are running on multiple accelerator devices, this replicates
+        # weights and updates across devices.
+        replicator = D3PGAgent.get_replicator(self._accelerator)
 
-        # Create the networks to optimize (online) and target networks.
-        online_networks = D3PGNetworks(
-            vehicle_policy_network=self._config.vehicle_policy_network,
-            vehicle_critic_network=self._config.vehicle_critic_network,
-            vehicle_observation_network=self._config.vehicle_observation_network,
-            edge_policy_network=self._config.edge_policy_network,
-            edge_critic_network=self._config.edge_critic_network,
-            edge_observation_network=self._config.edge_observation_network,
-        )
-        target_networks = copy.deepcopy(online_networks)
+        with replicator.scope():
+            # Create the networks to optimize (online) and target networks.
+            online_networks = D3PGNetworks(
+                vehicle_policy_network=self._config.vehicle_policy_network,
+                vehicle_critic_network=self._config.vehicle_critic_network,
+                vehicle_observation_network=self._config.vehicle_observation_network,
+                edge_policy_network=self._config.edge_policy_network,
+                edge_critic_network=self._config.edge_critic_network,
+                edge_observation_network=self._config.edge_observation_network,
+            )
+            target_networks = copy.deepcopy(online_networks)
 
-        # Initialize the networks.
-        online_networks.init(self._config.environment_spec)
-        target_networks.init(self._config.environment_spec)
+            # Initialize the networks.
+            online_networks.init(self._config.environment_spec)
+            target_networks.init(self._config.environment_spec)
 
         dataset = self._agent.make_dataset_iterator(replay)
         counter = counting.Counter(counter, 'learner')
@@ -146,7 +159,6 @@ class MultiAgentDistributedDDPG:
             edge_observation_network=self._config.edge_observation_network,
         )
         networks.init(self._config.environment_spec)
-        
         vehicle_policy_network, edge_policy_network = networks.make_policy(self._config.environment_spec)
 
         # Create the agent.

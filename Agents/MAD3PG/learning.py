@@ -1,7 +1,7 @@
 """D3PG learner implementation."""
 
 import time
-from typing import Dict, Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional, Union, Sequence
 
 import acme
 from acme import types
@@ -19,6 +19,7 @@ import tree
 
 from Environments.environment import vehicularNetworkEnv
 
+Replicator = Union[snt.distribute.Replicator, snt.distribute.TpuReplicator]
 
 class D3PGLearner(acme.Learner):
     """MAD3PG learner.
@@ -33,25 +34,33 @@ class D3PGLearner(acme.Learner):
         vehicle_critic_network: snt.Module,
         edge_policy_network: snt.Module,
         edge_critic_network: snt.Module,
+        
         target_vehicle_policy_network: snt.Module,
         target_vehicle_critic_network: snt.Module,
         target_edge_policy_network: snt.Module,
         target_edge_critic_network: snt.Module,
+        
         discount: float,
         target_update_period: int,
         dataset_iterator: Iterator[reverb.ReplaySample],
+        
         vehicle_observation_network: types.TensorTransformation = lambda x: x,
         target_vehicle_observation_network: types.TensorTransformation = lambda x: x,
         edge_observation_network: types.TensorTransformation = lambda x: x,
         target_edge_observation_network: types.TensorTransformation = lambda x: x,
+        
         vehicle_policy_optimizer: Optional[snt.Optimizer] = None,
         vehicle_critic_optimizer: Optional[snt.Optimizer] = None,
         edge_policy_optimizer: Optional[snt.Optimizer] = None,
         edge_critic_optimizer: Optional[snt.Optimizer] = None,
+        
         clipping: bool = True,
+        replicator: Optional[Replicator] = None,
+
         counter: Optional[counting.Counter] = None,
         logger: Optional[loggers.Logger] = None,
         checkpoint: bool = True,
+        
         environment: Optional[vehicularNetworkEnv] = None,
     ):
         """Initializes the learner.
@@ -74,6 +83,8 @@ class D3PGLearner(acme.Learner):
         critic_optimizer: the optimizer to be applied to the distributional
             Bellman loss.
         clipping: whether to clip gradients by global norm.
+        replicator: Replicates variables and their update methods over multiple
+        accelerators, such as the multiple chips in a TPU.
         counter: counter object used to keep track of steps.
         logger: logger object to be used by learner.
         checkpoint: boolean indicating whether to checkpoint the learner.
@@ -104,35 +115,43 @@ class D3PGLearner(acme.Learner):
         self._discount = discount
         self._clipping = clipping
 
-        # Necessary to track when to update target networks.
-        self._num_steps = tf.Variable(0, dtype=tf.int32)
-        self._target_update_period = target_update_period
+        # Replicates Variables across multiple accelerators
+        if not replicator:
+            accelerator = _get_first_available_accelerator_type()
+            if accelerator == 'TPU':
+                replicator = snt.distribute.TpuReplicator()
+            else:
+                replicator = snt.distribute.Replicator()
+
+        self._replicator = replicator
+
+        with replicator.scope():
+            # Necessary to track when to update target networks.
+            self._num_steps = tf.Variable(0, dtype=tf.int32)
+            self._target_update_period = target_update_period
+
+            # Create optimizers if they aren't given.
+            self._vehicle_policy_optimizer = vehicle_policy_optimizer or snt.optimizers.Adam(1e-4)
+            self._vehicle_critic_optimizer = vehicle_critic_optimizer or snt.optimizers.Adam(1e-4)
+
+            self._edge_policy_optimizer = edge_policy_optimizer or snt.optimizers.Adam(1e-4)
+            self._edge_critic_optimizer = edge_critic_optimizer or snt.optimizers.Adam(1e-4)
 
         # Batch dataset and create iterator.
         self._iterator = dataset_iterator
-
-        # Create optimizers if they aren't given.
-        self._vehicle_policy_optimizer = vehicle_policy_optimizer or snt.optimizers.Adam(1e-4)
-        self._vehicle_critic_optimizer = vehicle_critic_optimizer or snt.optimizers.Adam(1e-4)
-
-        self._edge_policy_optimizer = edge_policy_optimizer or snt.optimizers.Adam(1e-4)
-        self._edge_critic_optimizer = edge_critic_optimizer or snt.optimizers.Adam(1e-4)
 
         # Expose the variables.
         vehicle_policy_network_to_expose = snt.Sequential(
             [self._target_vehicel_observation_network, self._target_vehicle_policy_network])
         edge_policy_network_to_expose = snt.Sequential(
             [self._target_edge_observation_network, self._target_edge_policy_network])
-
-        # Create saver.
-        self._checkpoint = checkpoint
-        self._saver = tf2_savers.Saver(self._variables)
         self._variables = {
             'vehicle_critic': self._target_vehicle_critic_network.variables,
             'vehicle_policy': vehicle_policy_network_to_expose.variables,
             'edge_critic': self._target_edge_critic_network.variables,
             'edge_policy': edge_policy_network_to_expose.variables,
         }
+
 
         # Create a checkpointer and snapshotter objects.
         self._checkpointer = None
@@ -375,10 +394,19 @@ class D3PGLearner(acme.Learner):
             self._edge_critic_network.trainable_variables)
 
         # Compute gradients.
-        vehicle_policy_gradients = tape.gradient(vehicle_policy_loss, vehicle_policy_variables)
-        vehicle_critic_gradients = tape.gradient(vehicle_critic_loss, vehicle_critic_variables)
-        edge_policy_gradients = tape.gradient(edge_policy_loss, edge_policy_variables)
-        edge_critic_gradients = tape.gradient(edge_critic_loss, edge_critic_variables)
+        replica_context = tf.distribute.get_replica_context()
+        vehicle_policy_gradients =  _average_gradients_across_replicas(
+            replica_context,
+            tape.gradient(vehicle_policy_loss, vehicle_policy_variables))
+        vehicle_critic_gradients =  _average_gradients_across_replicas(
+            replica_context,
+            tape.gradient(vehicle_critic_loss, vehicle_critic_variables))
+        edge_policy_gradients =  _average_gradients_across_replicas(
+            replica_context,
+            tape.gradient(edge_policy_loss, edge_policy_variables))
+        edge_critic_gradients =  _average_gradients_across_replicas(
+            replica_context,
+            tape.gradient(edge_critic_loss, edge_critic_variables))
 
         # Delete the tape manually because of the persistent=True flag.
         del tape
@@ -404,6 +432,52 @@ class D3PGLearner(acme.Learner):
             'edge_critic_loss': edge_critic_loss,
         }
 
+    @tf.function
+    def _replicated_step(self):
+        # Update target network
+        online_variables = (
+            *self._vehicle_observation_network.variables,
+            *self._vehicle_critic_network.variables,
+            *self._vehicle_policy_network.variables,
+            *self._edge_observation_network.variables,
+            *self._edge_critic_network.variables,
+            *self._edge_policy_network.variables,
+        )
+        target_variables = (
+            *self._target_vehicle_observation_network.variables,
+            *self._target_vehicle_critic_network.variables,
+            *self._target_vehicle_policy_network.variables,
+            *self._target_edge_observation_network.variables,
+            *self._target_edge_critic_network.variables,
+            *self._target_edge_policy_network.variables,
+        )
+
+        # Make online -> target network update ops.
+        if tf.math.mod(self._num_steps, self._target_update_period) == 0:
+            for src, dest in zip(online_variables, target_variables):
+                dest.assign(src)
+        self._num_steps.assign_add(1)
+
+        # Get data from replay (dropping extras if any). Note there is no
+        # extra data here because we do not insert any into Reverb.
+        sample = next(self._iterator)
+
+        # This mirrors the structure of the fetches returned by self._step(),
+        # but the Tensors are replaced with replicated Tensors, one per accelerator.
+        replicated_fetches = self._replicator.run(self._step, args=(sample,))
+
+        def reduce_mean_over_replicas(replicated_value):
+            """Averages a replicated_value across replicas."""
+            # The "axis=None" arg means reduce across replicas, not internal axes.
+            return self._replicator.reduce(
+                reduce_op=tf.distribute.ReduceOp.MEAN,
+                value=replicated_value,
+                axis=None)
+
+        fetches = tree.map_structure(reduce_mean_over_replicas, replicated_fetches)
+
+        return fetches
+
     def step(self):
         # Run the learning step.
         fetches = self._step()
@@ -426,3 +500,57 @@ class D3PGLearner(acme.Learner):
 
     def get_variables(self, names: List[str]) -> List[List[np.ndarray]]:
         return [tf2_utils.to_numpy(self._variables[name]) for name in names]
+
+def _get_first_available_accelerator_type(
+    wishlist: Sequence[str] = ('TPU', 'GPU', 'CPU')) -> str:
+    """Returns the first available accelerator type listed in a wishlist.
+    Args:
+        wishlist: A sequence of elements from {'CPU', 'GPU', 'TPU'}, listed in
+        order of descending preference.
+    Returns:
+        The first available accelerator type from `wishlist`.
+    Raises:
+        RuntimeError: Thrown if no accelerators from the `wishlist` are found.
+    """
+    get_visible_devices = tf.config.get_visible_devices
+
+    for wishlist_device in wishlist:
+        devices = get_visible_devices(device_type=wishlist_device)
+        if devices:
+            return wishlist_device
+
+    available = ', '.join(
+        sorted(frozenset([d.type for d in get_visible_devices()])))
+    raise RuntimeError(
+        'Couldn\'t find any devices from {wishlist}.' +
+        f'Only the following types are available: {available}.')
+
+
+def _average_gradients_across_replicas(replica_context, gradients):
+    """Computes the average gradient across replicas.
+    This computes the gradient locally on this device, then copies over the
+    gradients computed on the other replicas, and takes the average across
+    replicas.
+    This is faster than copying the gradients from TPU to CPU, and averaging
+    them on the CPU (which is what we do for the losses/fetches).
+    Args:
+        replica_context: the return value of `tf.distribute.get_replica_context()`.
+        gradients: The output of tape.gradients(loss, variables)
+    Returns:
+        A list of (d_loss/d_varabiable)s.
+    """
+
+    # We must remove any Nones from gradients before passing them to all_reduce.
+    # Nones occur when you call tape.gradient(loss, variables) with some
+    # variables that don't affect the loss.
+    # See: https://github.com/tensorflow/tensorflow/issues/783
+    gradients_without_nones = [g for g in gradients if g is not None]
+    original_indices = [i for i, g in enumerate(gradients) if g is not None]
+
+    results_without_nones = replica_context.all_reduce('mean',
+                                                        gradients_without_nones)
+    results = [None] * len(gradients)
+    for ii, result in zip(original_indices, results_without_nones):
+        results[ii] = result
+
+    return results 

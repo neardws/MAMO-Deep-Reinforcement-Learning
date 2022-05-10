@@ -5,7 +5,7 @@ import dm_env
 import tree
 
 
-class RandomAgent(core.agent):
+class RandomActor(core.Actor):
     """Fake actor which generates random actions and validates specs."""
 
     def __init__(self, spec: specs.EnvironmentSpec):
