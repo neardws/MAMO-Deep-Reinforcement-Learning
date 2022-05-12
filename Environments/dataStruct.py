@@ -32,7 +32,11 @@ class timeSlots(object):
         self._end = end
         self._slot_length = slot_length
         self._number = int((end - start + 1) / slot_length)
+        self._now = start
         self.reset()
+
+    def __str__(self) -> str:
+        return f"now time: {self._now}, [{self._start} , {self._end}] with {self._slot_length} = {self._number} slots"
     
     def add_time(self) -> None:
         """method to add time to the system"""
@@ -40,23 +44,23 @@ class timeSlots(object):
 
     def is_end(self) -> bool:
         """method to check if the system is at the end of the time slots"""
-        return self._now > self._end
+        return self._now >= self._end
 
-    def get_slot_length(self):
+    def get_slot_length(self) -> int:
         """method to get the length of each time slot"""
-        return self._slot_length
+        return int(self._slot_length)
 
     def get_number(self) -> int:
-        return self._number
+        return int(self._number)
 
     def now(self) -> int:
-        return self._now
+        return int(self._now)
     
     def get_start(self) -> int:
-        return self._start
+        return int(self._start)
 
     def get_end(self) -> int:
-        return self._end
+        return int(self._end)
 
     def reset(self) -> None:
         self._now = self._start
@@ -70,7 +74,7 @@ class informationPacket(object):
     def __init__(
         self,
         type: int,
-        vehicle_index: int,
+        vehicle_index: int = -1,
         edge_index: int = -1,
         updating_moment: float = -1,
         inter_arrival_interval: float = -1,
@@ -100,14 +104,17 @@ class informationPacket(object):
         self._transmission_time = transmission_time
         self._received_moment = received_moment
 
+    def __str__(self) -> str:
+        return f"type: {self._type}\n vehicle_index: {self._vehicle_index}\n edge_index: {self._edge_index}\n updating_moment: {self._updating_moment}\n inter_arrival_interval: {self._inter_arrival_interval}\n arrival_moment: {self._arrival_moment}\n queuing_time: {self._queuing_time}\n transmission_time: {self._transmission_time}\n received_moment: {self._received_moment}"
+
     def get_type(self) -> int:
-        return self._type
+        return int(self._type)
     
     def get_vehicle_index(self) -> int:
-        return self._vehicle_index
+        return int(self._vehicle_index)
     
     def get_edge_index(self) -> int:
-        return self._edge_index
+        return int(self._edge_index)
     
     def get_updating_moment(self) -> float:
         return self._updating_moment
@@ -137,6 +144,9 @@ class location(object):
         """
         self._x = x
         self._y = y
+
+    def __str__(self) -> str:
+        return f"x: {self._x}, y: {self._y}"
 
     def get_x(self) -> float:
         return self._x
@@ -168,6 +178,9 @@ class trajectory(object):
 
         if len(self._locations) != timeSlots.get_number():
             raise ValueError("The number of locations must be equal to the max_timestampes.")
+
+    def __str__(self) -> str:
+        return str([print(location) for location in self._locations])
 
     def get_location(self, nowTimeSlot: int) -> location:
         """ get the location of the timestamp.
@@ -238,8 +251,11 @@ class vehicle(object):
 
         self._sensing_cost = self.sensing_cost_of_information()
 
+    def __str__(self) -> str:
+        return f"vehicle_index: {self._vehicle_index}\n vehicle_trajectory: {self._vehicle_trajectory}\n information_number: {self._information_number}\n sensed_information_number: {self._sensed_information_number}\n min_sensing_cost: {self._min_sensing_cost}\n max_sensing_cost: {self._max_sensing_cost}\n transmission_power: {self._transmission_power}\n seed: {self._seed}\n information_canbe_sensed: {self._information_canbe_sensed}\n sensing_cost: {self._sensing_cost}"
+
     def get_vehicle_index(self) -> int:
-        return self._vehicle_index
+        return int(self._vehicle_index)
 
     def get_transmission_power(self) -> float:
         return self._transmission_power
@@ -275,7 +291,7 @@ class vehicle(object):
         for _ in range(self._sensed_information_number):
             if self._information_canbe_sensed[_] == type:
                 return self._sensing_cost[_]
-        raise ValueError("The type is not in the sensing cost list.")
+        raise ValueError("The type is not in the sensing cost list. type: " + str(type))
     
     def get_vehicle_location(self, nowTimeSlot: int) -> location:
         return self._vehicle_trajectory.get_location(nowTimeSlot)
@@ -345,14 +361,17 @@ class vehicleList(object):
                 )
             )
 
+    def __str__(self) -> str:
+        return f"number: {self._number}\n information_number: {self._information_number}\n sensed_information_number: {self._sensed_information_number}\n min_sensing_cost: {self._min_sensing_cost}\n max_sensing_cost: {self._max_sensing_cost}\n transmission_power: {self._transmission_power}\n seeds: {self._seeds}\n vehicle_list: {self._vehicle_list}" + "\n" + str([print(vehicle) for vehicle in self._vehicle_list])
+
     def get_vehicle_list(self) -> List[vehicle]:
         return self._vehicle_list
 
     def get_number(self) -> int:
-        return self._number
+        return int(self._number)
 
     def get_sensed_information_number(self) -> int:
-        return self._sensed_information_number
+        return int(self._sensed_information_number)
 
     def get_vehicle(self, vehicle_index: int) -> vehicle:
         return self._vehicle_list[vehicle_index]
@@ -366,11 +385,7 @@ class vehicleList(object):
             self._trajectories_file_name, 
             names=['vehicle_id', 'time', 'longitude', 'latitude'], header=0)
 
-        # print(df)
-
         max_vehicle_id = df['vehicle_id'].max()
-        # print("max_vehicle_id:", max_vehicle_id)
-        # print("the type of max_vehicle_id:", type(max_vehicle_id))
 
         selected_vehicle_id = []
         for vehicle_id in range(int(max_vehicle_id)):
@@ -431,7 +446,7 @@ class edge(object):
         self._bandwidth = bandwidth
 
     def get_edge_index(self) -> int:
-        return self._edge_index
+        return int(self._edge_index)
 
     def get_edge_location(self) -> location:
         return self._edge_location
@@ -463,6 +478,9 @@ class edgeAction(object):
         self._vehicle_number = vehicle_number
         self._action_time = action_time
         self._bandwidth_allocation = bandwidth_allocation
+
+    def __str__(self) -> str:
+        return f"edge_bandwidth: {self._edge_bandwidth}\n now_time: {self._now_time}\n vehicle_number: {self._vehicle_number}\n action_time: {self._action_time}\n bandwidth_allocation: {self._bandwidth_allocation}"
 
     def get_bandwidth_allocation(self) -> np.ndarray:
         return self._bandwidth_allocation
@@ -504,7 +522,7 @@ class edgeAction(object):
             the edge action.
         """
         bandwidth_allocation = np.zeros((vehicle_number,))
-        bandwidth = rescale_the_list_to_small_than_one(list(network_output), is_sum_equal_one=True)
+        bandwidth = rescale_the_list_to_small_than_one(list(network_output))
         for index, values in enumerate(bandwidth):
             bandwidth_allocation[index] = values * edge_node.get_bandwidth()
 
@@ -554,8 +572,11 @@ class applicationList(object):
         else:
             raise Exception("The views_per_application must be greater than 1.")
 
+    def __str__(self) -> str:
+        return f"number: {self._number}\n view_number: {self._view_number}\n views_per_application: {self._views_per_application}\n seed: {self._seed}\n application_list: {self._application_list}"
+
     def get_number(self) -> int:
-        return self._number
+        return int(self._number)
 
     def get_application_list(self) -> List[int]:
         if self._application_list is None:
@@ -615,8 +636,11 @@ class viewList(object):
                 ))
             )
 
+    def __str__(self) -> str:
+        return f"number: {self._number}\n information_number: {self._information_number}\n required_information_number: {self._required_information_number}\n seeds: {self._seeds}\n view_list: {self._view_list}"
+
     def get_number(self) -> int:
-        return self._number
+        return int(self._number)
         
     def get_view_list(self) -> List[List[int]]:
         """ get the view list.
@@ -658,14 +682,17 @@ class information(object):
         self._data_size = data_size
         self._update_interval = update_interval
 
+    def __str__(self) -> str:
+        return f"type: {self._type}\n data_size: {self._data_size}\n update_interval: {self._update_interval}"
+
     def get_type(self) -> int:
-        return self._type
+        return int(self._type)
     
     def get_data_size(self) -> float:
         return self._data_size
     
     def get_update_interval(self) -> int:
-        return self._update_interval
+        return int(self._update_interval)
 
 class informationList(object):
     """
@@ -748,12 +775,15 @@ class informationList(object):
                 path_loss_exponent=path_loss_exponent
             )
 
+    def __str__(self) -> str:
+        return f"number: {self._number}\n seed: {self._seed}\n data_size_low_bound: {self._data_size_low_bound}\n data_size_up_bound: {self._data_size_up_bound}\n data_types_number: {self._data_types_number}\n update_interval_low_bound: {self._update_interval_low_bound}\n update_interval_up_bound: {self._update_interval_up_bound}\n types_of_information: {self._types_of_information}\n data_size_of_information: {self._data_size_of_information}\n update_inter_of_information: {self._update_interval_of_information}"
+
     def get_number(self) -> int:
         """ get the number of information.
         Returns:
             the number of information.
         """
-        return self._number
+        return int(self._number)
 
     def get_information_list(self) -> List[information]:
         return self._information_list
@@ -847,7 +877,7 @@ class informationList(object):
                     # myapp.info(f"transmission_power: {vehicle.get_transmission_power()}")
                     # myapp.info(f"SNR: {SNR}")
                     bandwidth = edge_node.get_bandwidth() / vehicle_number
-                    if self.get_information_siez_by_type(data_type_index) / compute_transmission_rate(SNR, bandwidth) != inf:
+                    if self.get_information_siez_by_type(data_type_index) / compute_transmission_rate(SNR, bandwidth) != np.Inf:
                         transmission_time.append(self.get_information_siez_by_type(data_type_index) / compute_transmission_rate(SNR, bandwidth))
                 mean_service_time = np.array(transmission_time).mean()
                 second_moment_service_time = np.array(transmission_time).var()
@@ -887,9 +917,9 @@ class vehicleAction(object):
         self._uploading_priorities = uploading_priorities
         self._transmission_power = transmission_power
         self._action_time = action_time
-
-        # if not self.check_action(now_time, vehicle_list):
-        #     raise ValueError("The action is not valid.")
+    
+    def __str__(self) -> str:
+        return f"vehicle_index: {self._vehicle_index}, now_time: {self._now_time}, sensed_information: {self._sensed_information}, sensing_frequencies: {self._sensing_frequencies}, uploading_priorities: {self._uploading_priorities}, transmission_power: {self._transmission_power}, action_time: {self._action_time}"
 
     def check_action(self, nowTimeSlot: int, vehicle_list: vehicleList) -> bool:
         """ check the action.
@@ -1044,13 +1074,27 @@ class informationRequirements(object):
         self._seed = seed
 
         self.applications_at_time = self.applications_at_times()
+
+    def __str__(self) -> str:
+        """ return the string representation of the information set.
+        Returns:
+            the string representation of the information set.
+        """
+        return "information requirements: \n" + \
+            "max_timestampes: " + str(self._max_timestampes) + "\n" + \
+            "max_application_number: " + str(self._max_application_number) + "\n" + \
+            "min_application_number: " + str(self._min_application_number) + "\n" + \
+            "application_number: " + str(self._application_number) + "\n" + \
+            "application_list: " + str(self._application_list) + "\n" + \
+            "view_list: " + str(self._view_list) + "\n" + \
+            "information_list: " + str(self._information_list) + "\n" + "seed: " + str(self._seed) + "\n"
         
     def get_seed(self) -> int:
         """ get the random seed.
         Returns:
             the random seed.
         """
-        return self._seed
+        return int(self._seed)
     
     def get_applications_at_times(self) -> List[List[int]]:
         """ get the applications at each time.

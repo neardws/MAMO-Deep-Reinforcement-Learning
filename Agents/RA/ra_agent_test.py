@@ -3,7 +3,7 @@
 import acme
 from acme import specs
 
-from agent import RandomAgent
+from Agents.RA.actors import RandomAgent
 from acme.testing import fakes
 
 from absl.testing import absltest

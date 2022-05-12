@@ -1,5 +1,12 @@
+import sys
+sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
+
 from Environments.environment import vehicularNetworkEnv
+from Environments import specs
 from Test.environmentConfig_test import vehicularNetworkEnvConfig
+from absl.testing import absltest
+from acme import environment_loop
+from Agents.RA import actors
 
 config = vehicularNetworkEnvConfig()
 config.vehicle_list_seeds += [i for i in range(config.vehicle_number)]
@@ -19,3 +26,16 @@ def test_size():
         "vehicle_critic_network_action_size: ", env._vehicle_critic_network_action_size, "\n",
         "edge_critic_network_action_size", env._edge_critic_network_action_size, "\n")
 
+
+class ActorTest(absltest.TestCase):
+
+    def test_random(self):
+        env_spec = specs.make_environment_spec(env)
+
+        actor = actors.RandomActor(env_spec)
+        loop = environment_loop.EnvironmentLoop(env, actor)
+        loop.run(20)
+
+
+if __name__ == '__main__':
+    absltest.main()

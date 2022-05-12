@@ -163,11 +163,11 @@ class D3PGNetworks:
         if sigma > 0.0:
             vehicle_stack += [
                 network_utils.ClippedGaussian(sigma),
-                network_utils.ClipToSpec(environment_spec.vehicle_actions),
+                network_utils.ClipToSpec(environment_spec.vehicle_actions),   # Clip to action spec.
             ]
             edge_stack += [
                 network_utils.ClippedGaussian(sigma),
-                network_utils.ClipToSpec(environment_spec.edge_actions),
+                network_utils.ClipToSpec(environment_spec.edge_actions),    # Clip to action spec.
             ]
 
         # Return a network which sequentially evaluates everything in the stack.

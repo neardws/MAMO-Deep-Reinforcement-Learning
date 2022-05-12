@@ -1,3 +1,6 @@
+import sys
+sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
+
 """Vehicular Network Environments."""
 import dm_env
 from dm_env import specs
@@ -6,7 +9,7 @@ from Environments.dataStruct import applicationList, edge, edgeAction, informati
 from typing import List, Optional, Tuple
 import Environments.environmentConfig as env_config
 from Environments.utilities import sensingAndQueuing, v2iTransmission
-
+from Log.logger import myapp
 
 class vehicularNetworkEnv(dm_env.Environment):
     """Vehicular Network Environment built on the dm_env framework."""
@@ -17,7 +20,6 @@ class vehicularNetworkEnv(dm_env.Environment):
             self._config = env_config.vehicularNetworkEnvConfig()
         else:
             self._config = envConfig
-        print(self._config)
         self._time_slots: timeSlots = timeSlots(
             start=self._config.time_slot_start,
             end=self._config.time_slot_end,
@@ -104,8 +106,19 @@ class vehicularNetworkEnv(dm_env.Environment):
 
         self._information_in_edge: List[List[informationPacket]] = []
 
-        for _ in range(self._config.information_number):
-            self._information_in_edge.append([])
+        for information_type in range(self._config.information_number):
+            self._information_in_edge.append([
+                informationPacket(
+                    type=information_type,
+                    edge_index=self._config.edge_index,
+                    updating_moment=0,
+                    inter_arrival_interval=-1,
+                    arrival_moment=0,
+                    queuing_time=0,
+                    transmission_time=0,
+                    received_moment=0,
+                )
+            ])
 
         self._reset_next_step: bool = True
 
@@ -157,8 +170,19 @@ class vehicularNetworkEnv(dm_env.Environment):
         """
         self._time_slots.reset()
         self._information_in_edge.clear()
-        for _ in range(self._config.information_number):
-            self._information_in_edge.append([])
+        for information_type in range(self._config.information_number):
+            self._information_in_edge.append([
+                informationPacket(
+                    type=information_type,
+                    edge_index=self._config.edge_index,
+                    updating_moment=0,
+                    inter_arrival_interval=-1,
+                    arrival_moment=0,
+                    queuing_time=0,
+                    transmission_time=0,
+                    received_moment=0,
+                )
+            ])
         self._reset_next_step = False
         return dm_env.restart(self._observation())
 
@@ -173,6 +197,12 @@ class vehicularNetworkEnv(dm_env.Environment):
         
         views_required_number, information_type_required_by_views_at_now, vehicle_actions, edge_action = \
             self.transform_action_array_to_actions(action)
+        myapp.info(f"\n timestep:\n {self._time_slots.now()}")
+        myapp.info(f"\n action:\n {action}")
+        myapp.info(f"\n views_required_number:\n  {views_required_number}")
+        myapp.info(f"\n information_type_required_by_views_at_now:\n  {information_type_required_by_views_at_now}")
+        myapp.info(f"\n vehicle_actions:\n  {str([print(vehicle_action) for vehicle_action in vehicle_actions])}")
+        myapp.info(f"\n edge_action:\n  {edge_action}")
         
         """Compute the baseline reward and difference rewards."""
         information_objects_ordered_by_views = self.compute_information_objects(
@@ -181,10 +211,14 @@ class vehicularNetworkEnv(dm_env.Environment):
             vehicle_actions=vehicle_actions,
             edge_action=edge_action,
         )
+        myapp.info(f"\n information_objects_ordered_by_views:\n  {information_objects_ordered_by_views}")
+
         baseline_reward = self.compute_reward(
             information_objects_ordered_by_views=information_objects_ordered_by_views,
             vehicle_actions=vehicle_actions,
         )
+        myapp.info(f"\n baseline_reward:\n  {baseline_reward}")
+
         self._reward[-1] = baseline_reward
         for i in range(self._config.vehicle_number):
             information_objects_ordered_by_views = self.compute_information_objects(
@@ -200,8 +234,17 @@ class vehicularNetworkEnv(dm_env.Environment):
                 vehicle_index=i,
             )
             self._reward[i] = vehicle_reward
-        edge_reward = (baseline_reward - min(self._reward_history)) / (max(self._reward_history) - min(self._reward_history))
+        if len(self._reward_history) == 0:
+            edge_reward = baseline_reward
+        elif len(self._reward_history) == 1:
+            edge_reward = baseline_reward - min(self._reward_history)
+        elif len(self._reward_history) > 1:
+            edge_reward = (baseline_reward - min(self._reward_history)) / (max(self._reward_history) - min(self._reward_history))
+        else:
+            raise ValueError("len(self._reward_history) = {}".format(len(self._reward_history)))
         self._reward[-2] = edge_reward
+
+        myapp.info(f"\n reward:\n  {self._reward}")
 
         """Update the information in the edge node."""
         information_objects_ordered_by_views = self.compute_information_objects(
@@ -210,14 +253,17 @@ class vehicularNetworkEnv(dm_env.Environment):
             vehicle_actions=vehicle_actions,
             edge_action=edge_action,
         )
+
+        myapp.info(f"\n information_objects_ordered_by_views:\n  {information_objects_ordered_by_views}")
         self.update_information_in_edge(
             information_objects_ordered_by_views=information_objects_ordered_by_views,
         )
         
         # check for termination
-        if self.done:
+        if self._time_slots.is_end():
             self._reset_next_step = True
             return dm_env.termination(observation=self._observation(), reward=self._reward)
+        self._time_slots.add_time()
         return dm_env.transition(observation=self._observation(), reward=self._reward)
 
     def transform_action_array_to_actions(self, action: np.ndarray) -> Tuple[int, List[List[int]], List[vehicleAction], edgeAction]:
@@ -230,15 +276,15 @@ class vehicularNetworkEnv(dm_env.Environment):
         Returns:
             actions: the actions of vehicles and the edge node.
         """ 
-        vhielce_action_array = action[0: self._vehicle_number * self._vehicle_action_size]
-        edge_action_array = action[self._vehicle_number * self._vehicle_action_size:]
+        vhielce_action_array = action[0: self._config.vehicle_number * self._vehicle_action_size]
+        edge_action_array = action[self._config.vehicle_number * self._vehicle_action_size:]
         
-        if len(vhielce_action_array) != self._vehicle_number * self._vehicle_action_size or \
+        if len(vhielce_action_array) != self._config.vehicle_number * self._vehicle_action_size or \
             len(edge_action_array) != self._edge_action_size:
             raise ValueError('The length of the action is not correct.')
 
         vehicle_actions: List[vehicleAction] = []
-        for i in range(self._vehicle_number):
+        for i in range(self._config.vehicle_number):
             vehicle_actions.append(
                 vehicleAction.generate_from_np_array(
                     vehicle_index=i,
@@ -264,7 +310,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             edge_node=self._edge_node,
             action_time=self._time_slots.now(),
             network_output=edge_action_array,
-            vehicle_number=self._vehicle_number,
+            vehicle_number=self._config.vehicle_number,
         )
         
         views_required_number: int = self._information_requirements.get_views_required_number_at_now(self._time_slots.now())
@@ -295,7 +341,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         for i in range(views_required_number):
             information_objects_ordered_by_views.append(list())
 
-        for i in range(self._vehicle_number):
+        for i in range(self._config.vehicle_number):
             
             if i == vehicle_index:     # the vehicle do nothing
                 continue
@@ -319,9 +365,9 @@ class vehicularNetworkEnv(dm_env.Environment):
                 arrival_moments=arrival_moments,
                 queuing_times=queuing_times,
                 white_gaussian_noise=self._config.white_gaussian_noise,
-                mean_channel_fading_gain=self.mean_channel_fading_gain,
-                second_moment_channel_fading_gain=self.second_moment_channel_fading_gain,
-                path_loss_exponent=self.path_loss_exponent,
+                mean_channel_fading_gain=self._config.mean_channel_fading_gain,
+                second_moment_channel_fading_gain=self._config.second_moment_channel_fading_gain,
+                path_loss_exponent=self._config.path_loss_exponent,
                 information_list=self._information_list,
             )
 
@@ -378,7 +424,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         timeliness_views = []
         for information_objects in information_objects_ordered_by_views:
             timeliness_list = []
-            for _ in range(self._vehicle_number):
+            for _ in range(self._config.vehicle_number):
                 timeliness_list.append(list())
             for infor in information_objects:
                 timeliness_list[infor.get_vehicle_index()].append(
@@ -386,7 +432,10 @@ class vehicularNetworkEnv(dm_env.Environment):
                 )
             timeliness_of_vehicles = []
             for values in timeliness_list:
-                timeliness_of_vehicles.append(max(values))
+                if values == []:
+                    timeliness_of_vehicles.append(0)
+                else:
+                    timeliness_of_vehicles.append(max(values))
             timeliness = sum(timeliness_of_vehicles)
             timeliness_views.append(timeliness)
             self._timeliness_views_history.append(timeliness)
@@ -397,6 +446,8 @@ class vehicularNetworkEnv(dm_env.Environment):
             updating_moments_of_informations = []
             for infor in information_objects:
                 updating_moments_of_informations.append(infor.get_updating_moment())
+
+            
             consistency = max(updating_moments_of_informations) - min(updating_moments_of_informations)
             consistency_views.append(consistency)
             self._consistency_views_history.append(consistency)
@@ -409,7 +460,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             for _ in range(self._config.information_number):
                 redundancy_list.append(list())
             for infor in information_objects:
-                redundancy_list[infor.get_type()].append(1)
+                redundancy_list[int(infor.get_type())].append(1)
             for i in range(self._config.information_number):
                 if sum(redundancy_list[i]) > 1:
                     redundancy += sum(redundancy_list[i]) - 1
@@ -420,16 +471,20 @@ class vehicularNetworkEnv(dm_env.Environment):
         cost_views = []
         for information_objects in information_objects_ordered_by_views:
             cost_list = []
-            for _ in range(self._vehicle_number):
+            for _ in range(self._config.vehicle_number):
                 cost_list.append(list())
             for infor in information_objects:
-                cost_list[infor.get_vehicle_index()].append(
-                    self._vehicle_list.get_vehicle(infor.get_vehicle_index()).get_sensing_cost_by_type(infor.get_type()) + \
-                        infor.get_transmission_time() * vehicle_actions[infor.get_vehicle_index()].get_transmission_power()
-                )
+                if infor.get_vehicle_index() != -1:
+                    cost_list[infor.get_vehicle_index()].append(
+                        self._vehicle_list.get_vehicle(infor.get_vehicle_index()).get_sensing_cost_by_type(infor.get_type()) + \
+                            infor.get_transmission_time() * vehicle_actions[infor.get_vehicle_index()].get_transmission_power()
+                    )
             cost_of_vehicles = []
             for values in cost_list:
-                cost_of_vehicles.append(sum(values))
+                if values == []:
+                    cost_of_vehicles.append(0)
+                else:
+                    cost_of_vehicles.append(sum(values))
             cost = sum(cost_of_vehicles)
             cost_views.append(cost)
             self._cost_views_history.append(cost)
@@ -439,32 +494,50 @@ class vehicularNetworkEnv(dm_env.Environment):
         consistency_views_normalized = []
         redundancy_views_normalized = []
         cost_views_normalized = []
-        
+
         for i in range(len(timeliness_views)):
-            timeliness_views_normalized.append(
-                (timeliness_views[i] - min(self._timeliness_views_history)) / (max(self._timeliness_views_history) - min(self._timeliness_views_history))
-            )
-            consistency_views_normalized.append(
-                (consistency_views[i] - min(self._consistency_views_history)) / (max(self._consistency_views_history) - min(self._consistency_views_history))
-            )
-            redundancy_views_normalized.append(
-                (redundancy_views[i] - min(self._redundancy_views_history)) / (max(self._redundancy_views_history) - min(self._redundancy_views_history))
-            )
-            cost_views_normalized.append(
-                (cost_views[i] - min(self._cost_views_history)) / (max(self._cost_views_history) - min(self._cost_views_history))
-            )
+            if (max(self._timeliness_views_history) - min(self._timeliness_views_history)) != 0:
+                timeliness_views_normalized.append(
+                    (timeliness_views[i] - min(self._timeliness_views_history)) / (max(self._timeliness_views_history) - min(self._timeliness_views_history))
+                )
+            else:
+                timeliness_views_normalized.append(-1)
+            
+            if (max(self._consistency_views_history) - min(self._consistency_views_history)) != 0:
+                consistency_views_normalized.append(
+                    (consistency_views[i] - min(self._consistency_views_history)) / (max(self._consistency_views_history) - min(self._consistency_views_history))
+                )
+            else:
+                consistency_views_normalized.append(-1)
+            
+            if (max(self._redundancy_views_history) - min(self._redundancy_views_history)) != 0:
+                redundancy_views_normalized.append(
+                    (redundancy_views[i] - min(self._redundancy_views_history)) / (max(self._redundancy_views_history) - min(self._redundancy_views_history))
+                )
+            else:
+                redundancy_views_normalized.append(-1)
+
+            if (max(self._cost_views_history) - min(self._cost_views_history)) != 0:
+                cost_views_normalized.append(
+                    (cost_views[i] - min(self._cost_views_history)) / (max(self._cost_views_history) - min(self._cost_views_history))
+                )
+            else:
+                cost_views_normalized.append(-1)
 
         """Compute the age of view."""
         age_of_view = []
         for i in range(len(timeliness_views_normalized)):
-            age_of_view.append(
-                self._config.wight_of_timeliness * timeliness_views_normalized[i] + \
-                self._config.wight_of_consistency * consistency_views_normalized[i] + \
-                self._config.wight_of_redundancy * redundancy_views_normalized[i] + \
-                self._config.wight_of_cost * cost_views_normalized[i]
-            )
+            if timeliness_views_normalized[i] != -1 and consistency_views_normalized[i] != -1 and redundancy_views_normalized[i] != -1 and cost_views_normalized[i] != -1:
+                age_of_view.append(
+                    self._config.wight_of_timeliness * timeliness_views_normalized[i] + \
+                    self._config.wight_of_consistency * consistency_views_normalized[i] + \
+                    self._config.wight_of_redundancy * redundancy_views_normalized[i] + \
+                    self._config.wight_of_cost * cost_views_normalized[i]
+                )
 
-        """Compute the reward."""
+        if len(age_of_view) == 0:
+            return -1
+
         reward = float(1.0 - sum(age_of_view) / len(age_of_view))
         reward = 0 if reward < 0 else reward
         reward = 1 if reward > 1 else reward
@@ -479,7 +552,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         """Define and return the observation space."""
         return specs.BoundedArray(
             shape=(self._vehicle_observation_size,),
-            dtype=np.float,
+            dtype=float,
             minimum=np.zeros((self._vehicle_observation_size,)),
             maximum=np.ones((self._vehicle_observation_size,))
         )
@@ -489,7 +562,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         """Define and return the action space."""
         return specs.BoundedArray(
             shape=(self._vehicle_action_size,),
-            dtype=np.float,
+            dtype=float,
             minimum=np.zeros((self._vehicle_action_size,)),
             maximum=np.ones((self._vehicle_action_size,))
         )
@@ -499,7 +572,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         """Define and return the action space."""
         return specs.BoundedArray(
             shape=(self._vehicle_critic_network_action_size,),
-            dtype=np.float,
+            dtype=float,
             minimum=np.zeros((self._vehicle_critic_network_action_size,)),
             maximum=np.ones((self._vehicle_critic_network_action_size,))
         )
@@ -509,7 +582,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         """Define and return the observation space."""
         return specs.BoundedArray(
             shape=(self._edge_observation_size,),
-            dtype=np.float,
+            dtype=float,
             minimum=np.zeros((self._edge_observation_size,)),
             maximum=np.ones((self._edge_observation_size,))
         )
@@ -519,7 +592,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         """Define and return the action space."""
         return specs.BoundedArray(
             shape=(self._edge_action_size,),
-            dtype=np.float,
+            dtype=float,
             minimum=np.zeros((self._edge_action_size,)),
             maximum=np.ones((self._edge_action_size,))
         )
@@ -529,7 +602,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         """Define and return the action space."""
         return specs.BoundedArray(
             shape=(self._edge_critic_network_action_size,),
-            dtype=np.float,
+            dtype=float,
             minimum=np.zeros((self._edge_critic_network_action_size,)),
             maximum=np.ones((self._edge_critic_network_action_size,))
         )
@@ -539,7 +612,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         """Define and return the observation space."""
         return specs.BoundedArray(
             shape=(self._observation_size,),
-            dtype=np.float,
+            dtype=float,
             minimum=np.zeros((self._observation_size,)),
             maximum=np.ones((self._observation_size,)),
             name='observation'
@@ -550,7 +623,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         """Define and return the action space."""
         return specs.BoundedArray(
             shape=(self._action_size,),
-            dtype=np.float,
+            dtype=float,
             minimum=np.zeros((self._action_size,)),
             maximum=np.ones((self._action_size,)),
             name='action'
@@ -560,7 +633,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         """Define and return the reward space."""
         return specs.Array(
             shape=(self._reward_size,), 
-            dtype=np.float, 
+            dtype=float, 
             name='reward'
         )
     
@@ -575,36 +648,47 @@ class vehicularNetworkEnv(dm_env.Environment):
         observation = np.zeros((self._observation_size,))
         index = 0
         # now_time_slot
+        # 1
         observation[index] = float(self._time_slots.now() / self._time_slots.get_number())
         index += 1
         # vehicle distances
+        # 2 - 11
         for _ in range(self._config.vehicle_number):
             observation[index] = float(self._vehicle_list.get_vehicle(_).get_distance_between_edge(
                 nowTimeSlot=self._time_slots.now(),
                 edge_location=self._edge_node.get_edge_location(),
             ) / (self._edge_node.get_communication_range() * np.sqrt(2)))
+            if observation[index] > 1:
+                observation[index] = 1
             index += 1
         # information_canbe_senseds
+        # 12 - 41
         for _ in range(self._config.vehicle_number):
             for __ in range(self._config.sensed_information_number):
                 observation[index] = float(self._vehicle_list.get_vehicle(_).get_information_canbe_sensed()[__]
                     / self._config.information_number)
                 index += 1
         # sensing_cost_of_informations
+        # 42 - 71
         for _ in range(self._config.vehicle_number):
             for __ in range(self._config.sensed_information_number):
                 observation[index] = float(self._vehicle_list.get_vehicle(_).get_sensing_cost()[__]
                     / self._config.max_sensing_cost)
                 index += 1
         # information_in_edge
+        # 72 - 81
         for _ in range(self._config.information_number):
             if len(self._information_in_edge[_]) == 0:
                 observation[index] = 0
             else:
-                observation[index] = float(self._information_in_edge[_][0].get_received_moment() 
-                    / self._time_slots.get_number())
+                if self._information_in_edge[_][0].get_received_moment() >= self._time_slots.get_number():
+                    observation[index] = 1
+                else:
+                    observation[index] = float(self._information_in_edge[_][0].get_received_moment() 
+                        / self._time_slots.get_number())
             index += 1
         # information_requried
+        # 82 - 91
         for _ in range(self._config.information_number):
             observation[index] = float(self._information_requirements.get_information_required_at_now(self._time_slots.now())[_])
             index += 1
@@ -612,7 +696,12 @@ class vehicularNetworkEnv(dm_env.Environment):
         return observation
 
     @staticmethod
-    def get_vehicle_observations(environment: dm_env.Environment, observation: np.ndarray) -> List[np.ndarray]:
+    def get_vehicle_observations(
+        vehicle_number: int, 
+        information_number: int, 
+        sensed_information_number: int, 
+        vehicle_observation_size: int, 
+        observation: np.ndarray) -> List[np.ndarray]:
         """Return the observations of the environment at each vehicle.
         vehicle_observation_size: int = 1 + 1 + 1 + self._config.sensed_information_number + self._config.sensed_information_number + \
             self._config.information_number + self._config.information_number 
@@ -620,56 +709,56 @@ class vehicularNetworkEnv(dm_env.Environment):
             # information_in_edge + information_requried
         """
         vehicle_observations = []
-        for _ in range(environment._config.vehicle_number):
-            vehicle_observations.append(np.zeros((environment._vehicle_observation_size,)))
+        for _ in range(vehicle_number):
+            vehicle_observations.append(np.zeros((vehicle_observation_size,)))
         
         index = 0
         observation_index = 0
         # now_time_slot
-        for _ in range(environment._config.vehicle_number):
+        for _ in range(vehicle_number):
             vehicle_observations[_][index] = observation[observation_index]
         index += 1
         observation_index += 1
 
         # vehicle_index
-        for _ in range(environment._config.vehicle_number):
-            vehicle_observations[_][index] = float(_ / environment._config.vehicle_number)
+        for _ in range(vehicle_number):
+            vehicle_observations[_][index] = float(_ / vehicle_number)
         index += 1
 
         # vehicle distances
-        for _ in range(environment._config.vehicle_number):
+        for _ in range(vehicle_number):
             vehicle_observations[_][index] = observation[observation_index]
             observation_index += 1
         index += 1
 
         # information_canbe_senseds
-        for _ in range(environment._config.vehicle_number):
+        for _ in range(vehicle_number):
             origin_index = index
-            for __ in range(environment._config.sensed_information_number):
+            for __ in range(sensed_information_number):
                 vehicle_observations[_][origin_index] = observation[observation_index]
                 observation_index += 1
                 origin_index += 1
         index = origin_index
 
         # sensing_cost_of_informations
-        for _ in range(environment._config.vehicle_number):
+        for _ in range(vehicle_number):
             origin_index = index
-            for __ in range(environment._config.sensed_information_number):
+            for __ in range(sensed_information_number):
                 vehicle_observations[_][origin_index] = observation[observation_index]
                 observation_index += 1
                 origin_index += 1
         index = origin_index
 
         # information_in_edge
-        for _ in range(environment._config.information_number):
-            for __ in range(environment._config.vehicle_number):
+        for _ in range(information_number):
+            for __ in range(vehicle_number):
                 vehicle_observations[__][index] = observation[observation_index]
             observation_index += 1
             index += 1
         
         # information_requried
-        for _ in range(environment._config.information_number):
-            for __ in range(environment._config.vehicle_number):
+        for _ in range(information_number):
+            for __ in range(vehicle_number):
                 vehicle_observations[__][index] = observation[observation_index]
             observation_index += 1
             index += 1

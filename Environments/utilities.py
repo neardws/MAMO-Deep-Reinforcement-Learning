@@ -1,9 +1,13 @@
+import sys
+sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
+
 from Environments.dataStruct import informationList
 from Environments.dataStruct import edge, edgeAction
 from Environments.dataStruct import vehicle, vehicleAction
 import pandas as pd
 import numpy as np
 import time
+from Log.logger import myapp
 
 class vehicleTrajectoriesProcessor(object):
     def __init__(
@@ -370,10 +374,6 @@ class sensingAndQueuing(object):
                     "uploading_priority": self._uploading_priorities[i]
                 })
         action_list.sort(key=lambda value: value["uploading_priority"], reverse=True)
-        # print("action_list:\n", action_list)
-
-        # print("mean_service_time:\n", information_list.get_mean_service_time_of_types()[0])
-        # print("second_moment_service_time:\n", information_list.get_second_moment_service_time_of_types()[0])
 
         for index, action in enumerate(action_list):
             data_type_index = int(action["data_type_index"])
@@ -390,10 +390,6 @@ class sensingAndQueuing(object):
             if index == 0:
                 for i in range(self._sensed_information_number):
                     if self._sensed_information_type[i] == data_type_index:
-                        # print("i:", i)
-                        # print("mean_service_time:", mean_service_time)
-                        # print("second_moment_service_time:", second_moment_service_time)
-                        # print("sensing_frequency:", sensing_frequency)
                         queuing_times[i] = mean_service_time + ((sensing_frequency * second_moment_service_time) / (2 * (1 - (sensing_frequency * mean_service_time)))) - mean_service_time
                 continue
 
@@ -479,7 +475,10 @@ class v2iTransmission(object):
         for i in range(self._sensed_information_number):
             if self._sensed_information[i] == 1:
                 start_time = int(np.floor(self._arrival_moments[i] + self._queuing_times[i]))
-                vehicle_loaction = self._vehicle_trajectory.get_location(start_time)
+                try:
+                    vehicle_loaction = self._vehicle_trajectory.get_location(start_time)
+                except IndexError:
+                    vehicle_loaction = self._vehicle_trajectory.get_location(-1)    # the last location
                 distance = vehicle_loaction.get_distance(self._edge_location)
                 SNR = compute_SNR(
                     white_gaussian_noise=self._white_gaussian_noise, 

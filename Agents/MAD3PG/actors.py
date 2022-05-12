@@ -58,7 +58,12 @@ class FeedForwardActor(core.Actor):
     @tf.function
     def _policy(self, observation: types.NestedTensor) -> types.NestedTensor:
         # Add a dummy batch dimension and as a side effect convert numpy to TF.
-        vehicle_observations: List[types.NestedTensor] = vehicularNetworkEnv.get_vehicle_observations(environment=self._environment, observation=observation)
+        vehicle_observations: List[types.NestedTensor] = vehicularNetworkEnv.get_vehicle_observations(
+            vehicle_number=self._environment.vehicle_number, 
+            information_number=self._environment.information_number, 
+            sensed_information_number=self._environment.sensed_information_number, 
+            vehicle_observation_size=self._environment.vehicle_observation_size,
+            observation=observation)
         edge_observation = vehicularNetworkEnv.get_edge_observation(observation=observation)
 
         action = []
