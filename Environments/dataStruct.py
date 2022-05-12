@@ -1,18 +1,20 @@
-from cmath import inf
 import numpy as np
 import pandas as pd
 from typing import List, Tuple, Optional
 from Log.logger import myapp
 
-def softmax(x: list) -> list:
-    """ softmax function.
+def rescale_the_list_to_small_than_one(list_to_rescale: List[float], is_sum_equal_one: Optional[bool] = False) -> List[float]:
+    """ rescale the list small than one.
     Args:
-        x: the input list.
+        list_to_rescale: list to rescale.
     Returns:
-        the output list.
+        rescaled list.
     """
-    e_x = np.exp(x - np.max(x))
-    return e_x / e_x.sum()
+    if is_sum_equal_one:
+        maximum_sum = sum(list_to_rescale)
+    else:
+        maximum_sum = sum(list_to_rescale) + 0.00001
+    return [x / maximum_sum for x in list_to_rescale]   # rescale the list to small than one.
 
 class timeSlots(object):
     """The set of discrete time slots of the system"""
@@ -476,10 +478,15 @@ class edgeAction(object):
             True if the action is valid.
         """
         if self._action_time != nowTimeSlot:
+            print("the action time is not correct.")
             return False
         if self._vehicle_number != len(self._bandwidth_allocation):
+            print("the number of vehicles is not correct.")
             return False
         if self._edge_bandwidth < self.get_the_sum_of_bandwidth_allocation():
+            print("the allocated bandwidth exceeds its cability.")
+            print("the allocated bandwidth:", self.get_the_sum_of_bandwidth_allocation())
+            print("the edge bandwidth:", self._edge_bandwidth)
             return False
         return True
 
@@ -497,7 +504,7 @@ class edgeAction(object):
             the edge action.
         """
         bandwidth_allocation = np.zeros((vehicle_number,))
-        bandwidth = softmax(list(network_output))
+        bandwidth = rescale_the_list_to_small_than_one(list(network_output), is_sum_equal_one=True)
         for index, values in enumerate(bandwidth):
             bandwidth_allocation[index] = values * edge_node.get_bandwidth()
 
@@ -955,7 +962,7 @@ class vehicleAction(object):
             if values > 0.5:
                 sensed_information[index] = 1
         frequencies = network_output[sensed_information_number: 2*sensed_information_number]
-        frequencies = softmax(list(frequencies))
+        frequencies = rescale_the_list_to_small_than_one(frequencies)
         for index, values in enumerate(frequencies):
             if sensed_information[index] == 1:
                 sensing_frequencies[index] = (values - 0.01) / information_list.get_mean_service_time_by_vehicle_and_type(
