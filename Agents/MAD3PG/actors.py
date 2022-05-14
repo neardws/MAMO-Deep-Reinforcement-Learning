@@ -1,15 +1,12 @@
 """Generic actor implementation, using TensorFlow and Sonnet."""
 
 from typing import Optional, List
-
 from acme import adders
 from acme import core
 from acme import types
-# Internal imports.
 import numpy as np
 from acme.tf import utils as tf2_utils
 from acme.tf import variable_utils as tf2_variable_utils
-
 import dm_env
 import sonnet as snt
 import tensorflow as tf

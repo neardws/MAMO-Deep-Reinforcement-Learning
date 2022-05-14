@@ -180,7 +180,7 @@ class trajectory(object):
             raise ValueError("The number of locations must be equal to the max_timestampes.")
 
     def __str__(self) -> str:
-        return str([print(location) for location in self._locations])
+        return str([str(location) for location in self._locations])
 
     def get_location(self, nowTimeSlot: int) -> location:
         """ get the location of the timestamp.
@@ -362,7 +362,7 @@ class vehicleList(object):
             )
 
     def __str__(self) -> str:
-        return f"number: {self._number}\n information_number: {self._information_number}\n sensed_information_number: {self._sensed_information_number}\n min_sensing_cost: {self._min_sensing_cost}\n max_sensing_cost: {self._max_sensing_cost}\n transmission_power: {self._transmission_power}\n seeds: {self._seeds}\n vehicle_list: {self._vehicle_list}" + "\n" + str([print(vehicle) for vehicle in self._vehicle_list])
+        return f"number: {self._number}\n information_number: {self._information_number}\n sensed_information_number: {self._sensed_information_number}\n min_sensing_cost: {self._min_sensing_cost}\n max_sensing_cost: {self._max_sensing_cost}\n transmission_power: {self._transmission_power}\n seeds: {self._seeds}\n vehicle_list: {self._vehicle_list}" + "\n" + str([str(vehicle) for vehicle in self._vehicle_list])
 
     def get_vehicle_list(self) -> List[vehicle]:
         return self._vehicle_list
@@ -671,7 +671,7 @@ class information(object):
         self, 
         type: int, 
         data_size: float,
-        update_interval: int) -> None:
+        update_interval: float) -> None:
         """ initialize the information.
         Args:
             type: the type of the information.
@@ -691,8 +691,8 @@ class information(object):
     def get_data_size(self) -> float:
         return self._data_size
     
-    def get_update_interval(self) -> int:
-        return int(self._update_interval)
+    def get_update_interval(self) -> float:
+        return self._update_interval
 
 class informationList(object):
     """
@@ -708,8 +708,8 @@ class informationList(object):
         data_size_low_bound: float,
         data_size_up_bound: float,
         data_types_number: int,
-        update_interval_low_bound: int,
-        update_interval_up_bound: int,
+        update_interval_low_bound: float,
+        update_interval_up_bound: float,
         vehicle_list: vehicleList,
         edge_node: edge,
         white_gaussian_noise: int,
@@ -745,14 +745,14 @@ class informationList(object):
         self._data_size_of_information: List[float] = np.random.uniform(
             low=self._data_size_low_bound,
             high=self._data_size_up_bound,
-            size=self._number
+            size=self._number,
         )
 
         np.random.seed(self._seed)
-        self._update_interval_of_information: List[int] = np.random.randint(
-            size=self._number, 
+        self._update_interval_of_information: List[float] = np.random.uniform(
             low=self._update_interval_low_bound, 
-            high=self._update_interval_up_bound
+            high=self._update_interval_up_bound,
+            size=self._number, 
         )
 
         self._information_list: List[information] = []
@@ -807,7 +807,7 @@ class informationList(object):
                 return information.get_data_size()
         raise ValueError("The type is not in the list.")
 
-    def get_information_update_interval_by_type(self, type: int) -> int:
+    def get_information_update_interval_by_type(self, type: int) -> float:
         """method to get the information update interval by type"""
         for information in self._information_list:
             if information.get_type() == type:
@@ -870,12 +870,6 @@ class informationList(object):
                         path_loss_exponent=path_loss_exponent,
                         transmission_power=vehicle.get_transmission_power()
                     )
-                    # myapp.info(f"white_gaussian_noise: {white_gaussian_noise}")
-                    # myapp.info(f"channel_fading_gain: {channel_fading_gain}")
-                    # myapp.info(f"distance: {distance}")
-                    # myapp.info(f"path_loss_exponent: {path_loss_exponent}")
-                    # myapp.info(f"transmission_power: {vehicle.get_transmission_power()}")
-                    # myapp.info(f"SNR: {SNR}")
                     bandwidth = edge_node.get_bandwidth() / vehicle_number
                     if self.get_information_siez_by_type(data_type_index) / compute_transmission_rate(SNR, bandwidth) != np.Inf:
                         transmission_time.append(self.get_information_siez_by_type(data_type_index) / compute_transmission_rate(SNR, bandwidth))
@@ -984,9 +978,9 @@ class vehicleAction(object):
         """
         from Environments.utilities import get_minimum_transmission_power
 
-        sensed_information = np.zeros(shape=(sensed_information_number,))
-        sensing_frequencies = np.zeros(shape=(sensed_information_number,))
-        uploading_priorities = np.zeros(shape=(sensed_information_number,))
+        sensed_information = np.zeros(sensed_information_number)
+        sensing_frequencies = np.zeros(sensed_information_number)
+        uploading_priorities = np.zeros(sensed_information_number)
 
         for index, values in enumerate(network_output[:sensed_information_number]):
             if values > 0.5:

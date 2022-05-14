@@ -1,9 +1,7 @@
 """D3PG agent implementation."""
-
 import copy
-import functools
 import dataclasses
-from typing import Iterator, List, Optional, Tuple, Union, Sequence
+from typing import Iterator, List, Optional, Tuple
 from acme import adders
 from acme import core
 from Environments.environment import vehicularNetworkEnv
@@ -22,8 +20,7 @@ from acme.utils import loggers
 import reverb
 import sonnet as snt
 import tensorflow as tf
-
-Replicator = Union[snt.distribute.Replicator, snt.distribute.TpuReplicator]
+from Agents.accelerator import get_first_available_accelerator_type, get_replicator
 
 @dataclasses.dataclass
 class D3PGConfig:
@@ -194,7 +191,7 @@ class D3PGAgent(agent.Agent):
         self._accelerator = config.accelerator
 
         if not self._accelerator:
-            self._accelerator = _get_first_available_accelerator_type(['TPU', 'GPU', 'CPU'])
+            self._accelerator = get_first_available_accelerator_type(['TPU', 'GPU', 'CPU'])
 
         online_networks = D3PGNetworks(
             vehicle_policy_network=self.config.vehicle_policy_network,
@@ -372,72 +369,3 @@ class D3PGAgent(agent.Agent):
             logger=logger,
             checkpoint=checkpoint,
         )
-
-def _ensure_accelerator(accelerator: str) -> str:
-    """Checks for the existence of the expected accelerator type.
-    Args:
-        accelerator: 'CPU', 'GPU' or 'TPU'.
-    Returns:
-        The validated `accelerator` argument.
-    Raises:
-        RuntimeError: Thrown if the expected accelerator isn't found.
-    """
-    devices = tf.config.get_visible_devices(device_type=accelerator)
-
-    if devices:
-        return accelerator
-    else:
-        error_messages = [f'Couldn\'t find any {accelerator} devices.',
-                        'tf.config.get_visible_devices() returned:']
-        error_messages.extend([str(d) for d in devices])
-        raise RuntimeError('\n'.join(error_messages))
-
-
-def _get_first_available_accelerator_type(
-    wishlist: Sequence[str] = ('TPU', 'GPU', 'CPU')) -> str:
-    """Returns the first available accelerator type listed in a wishlist.
-    Args:
-        wishlist: A sequence of elements from {'CPU', 'GPU', 'TPU'}, listed in
-        order of descending preference.
-    Returns:
-        The first available accelerator type from `wishlist`.
-    Raises:
-        RuntimeError: Thrown if no accelerators from the `wishlist` are found.
-    """
-    get_visible_devices = tf.config.get_visible_devices
-
-    for wishlist_device in wishlist:
-        devices = get_visible_devices(device_type=wishlist_device)
-        if devices:
-            return wishlist_device
-
-    available = ', '.join(
-        sorted(frozenset([d.type for d in get_visible_devices()])))
-    raise RuntimeError(
-        'Couldn\'t find any devices from {wishlist}.' +
-        f'Only the following types are available: {available}.')
-
-# Only instantiate one replicator per (process, accelerator type), in case
-# a replicator stores state that needs to be carried between its method calls.
-@functools.lru_cache()
-def get_replicator(accelerator: Optional[str]) -> Replicator:
-    """Returns a replicator instance appropriate for the given accelerator.
-    This caches the instance using functools.cache, so that only one replicator
-    is instantiated per process and argument value.
-    Args:
-        accelerator: None, 'TPU', 'GPU', or 'CPU'. If None, the first available
-        accelerator type will be chosen from ('TPU', 'GPU', 'CPU').
-    Returns:
-        A replicator, for replciating weights, datasets, and updates across
-        one or more accelerators.
-    """
-    if accelerator:
-        accelerator = _ensure_accelerator(accelerator)
-    else:
-        accelerator = _get_first_available_accelerator_type()
-
-    if accelerator == 'TPU':
-        tf.tpu.experimental.initialize_tpu_system()
-        return snt.distribute.TpuReplicator()
-    else:
-        return snt.distribute.Replicator()

@@ -15,8 +15,6 @@ class RandomActor(core.Actor):
 
     def select_action(self, observation: types.NestedArray) -> types.NestedArray:
         _validate_spec(self._spec.observations, observation)
-        print("RandomActor.select_action")
-        print(_generate_from_spec(self._spec.actions))
         return _generate_from_spec(self._spec.actions)
 
     def observe_first(self, timestep: dm_env.TimeStep):

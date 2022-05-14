@@ -100,7 +100,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         self._redundancy_views_history: List[float] = []
         self._cost_views_history: List[float] = []
 
-        self._reward_history: List[float] = []
+        self._reward_history: List[List[float]] = [[] for _ in range(self._time_slots.get_number())]
 
         self._reward: np.ndarray = np.zeros(self._reward_size)
 
@@ -197,12 +197,12 @@ class vehicularNetworkEnv(dm_env.Environment):
         
         views_required_number, information_type_required_by_views_at_now, vehicle_actions, edge_action = \
             self.transform_action_array_to_actions(action)
-        myapp.info(f"\n timestep:\n {self._time_slots.now()}")
-        myapp.info(f"\n action:\n {action}")
-        myapp.info(f"\n views_required_number:\n  {views_required_number}")
-        myapp.info(f"\n information_type_required_by_views_at_now:\n  {information_type_required_by_views_at_now}")
-        myapp.info(f"\n vehicle_actions:\n  {str([print(vehicle_action) for vehicle_action in vehicle_actions])}")
-        myapp.info(f"\n edge_action:\n  {edge_action}")
+        myapp.debug(f"\ntimestep:\n{self._time_slots.now()}")
+        # myapp.debug(f"\naction:\n{action}")
+        # myapp.debug(f"\nviews_required_number:\n{views_required_number}")
+        # myapp.debug(f"\ninformation_type_required_by_views_at_now:\n{information_type_required_by_views_at_now}")
+        # myapp.debug(f"\nvehicle_actions:\n{str([str(vehicle_action) for vehicle_action in vehicle_actions])}")
+        # myapp.debug(f"\nedge_action:\n{edge_action}")
         
         """Compute the baseline reward and difference rewards."""
         information_objects_ordered_by_views = self.compute_information_objects(
@@ -211,13 +211,13 @@ class vehicularNetworkEnv(dm_env.Environment):
             vehicle_actions=vehicle_actions,
             edge_action=edge_action,
         )
-        myapp.info(f"\n information_objects_ordered_by_views:\n  {information_objects_ordered_by_views}")
+        # myapp.debug(f"information_objects_ordered_by_views:\n{self.string_of_information_objects_ordered_by_views(information_objects_ordered_by_views)}")
 
         baseline_reward = self.compute_reward(
             information_objects_ordered_by_views=information_objects_ordered_by_views,
             vehicle_actions=vehicle_actions,
         )
-        myapp.info(f"\n baseline_reward:\n  {baseline_reward}")
+        myapp.debug(f"\nbaseline_reward:\n{baseline_reward}")
 
         self._reward[-1] = baseline_reward
         for i in range(self._config.vehicle_number):
@@ -234,17 +234,18 @@ class vehicularNetworkEnv(dm_env.Environment):
                 vehicle_index=i,
             )
             self._reward[i] = vehicle_reward
-        if len(self._reward_history) == 0:
+        myapp.debug(f"\nself._reward_history[int(self._time_slots.now())]:\n{self._reward_history[int(self._time_slots.now())]}")
+        if len(self._reward_history[int(self._time_slots.now())]) == 0:
             edge_reward = baseline_reward
-        elif len(self._reward_history) == 1:
-            edge_reward = baseline_reward - min(self._reward_history)
-        elif len(self._reward_history) > 1:
-            edge_reward = (baseline_reward - min(self._reward_history)) / (max(self._reward_history) - min(self._reward_history))
+        elif len(self._reward_history[int(self._time_slots.now())]) == 1:
+            edge_reward = baseline_reward - min(self._reward_history[int(self._time_slots.now())])
+        elif len(self._reward_history[int(self._time_slots.now())]) > 1:
+            edge_reward = (baseline_reward - min(self._reward_history[int(self._time_slots.now())])) / (max(self._reward_history[int(self._time_slots.now())]) - min(self._reward_history[int(self._time_slots.now())]))
         else:
-            raise ValueError("len(self._reward_history) = {}".format(len(self._reward_history)))
+            raise ValueError("len(self._reward_history) = {}".format(len(self._reward_history[int(self._time_slots.now())])))
         self._reward[-2] = edge_reward
 
-        myapp.info(f"\n reward:\n  {self._reward}")
+        myapp.debug(f"\nreward:\n{self._reward}")
 
         """Update the information in the edge node."""
         information_objects_ordered_by_views = self.compute_information_objects(
@@ -254,10 +255,11 @@ class vehicularNetworkEnv(dm_env.Environment):
             edge_action=edge_action,
         )
 
-        myapp.info(f"\n information_objects_ordered_by_views:\n  {information_objects_ordered_by_views}")
         self.update_information_in_edge(
             information_objects_ordered_by_views=information_objects_ordered_by_views,
         )
+
+        # myapp.debug(f"\ninformation_objects_ordered_by_views:\n{self.string_of_information_objects_ordered_by_views(information_objects_ordered_by_views)}")
         
         # check for termination
         if self._time_slots.is_end():
@@ -356,7 +358,12 @@ class vehicularNetworkEnv(dm_env.Environment):
             arrival_moments = sensing_and_queuing.get_arrival_moments()
             updating_moments = sensing_and_queuing.get_updating_moments()
             queuing_times = sensing_and_queuing.get_queuing_times()
-
+            # myapp.debug("sensed_information_type: {}".format(sensed_information_type))
+            # myapp.debug("arrival_intervals: {}".format(arrival_intervals))
+            # myapp.debug("arrival_moments: {}".format(arrival_moments))
+            # myapp.debug("updating_moments: {}".format(updating_moments))
+            # myapp.debug("queuing_times: {}".format(queuing_times))
+            
             v2i_transmission = v2iTransmission(
                 vehicle=self._vehicle_list.get_vehicle(i),
                 vehicle_action=vehicle_actions[i],
@@ -439,6 +446,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             timeliness = sum(timeliness_of_vehicles)
             timeliness_views.append(timeliness)
             self._timeliness_views_history.append(timeliness)
+        # myapp.debug(f"timeliness_views: {timeliness_views}")
 
         """Compute the consistency of views"""
         consistency_views = []
@@ -446,12 +454,11 @@ class vehicularNetworkEnv(dm_env.Environment):
             updating_moments_of_informations = []
             for infor in information_objects:
                 updating_moments_of_informations.append(infor.get_updating_moment())
-
-            
             consistency = max(updating_moments_of_informations) - min(updating_moments_of_informations)
             consistency_views.append(consistency)
             self._consistency_views_history.append(consistency)
-                
+        # myapp.debug(f"consistency_views: {consistency_views}")
+
         """Compute the redundancy of views"""
         redundancy_views = []
         for information_objects in information_objects_ordered_by_views:
@@ -466,6 +473,7 @@ class vehicularNetworkEnv(dm_env.Environment):
                     redundancy += sum(redundancy_list[i]) - 1
             redundancy_views.append(redundancy)
             self._redundancy_views_history.append(redundancy)
+        # myapp.debug(f"redundancy_views: {redundancy_views}")
 
         """Compute the cost of view"""
         cost_views = []
@@ -488,6 +496,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             cost = sum(cost_of_vehicles)
             cost_views.append(cost)
             self._cost_views_history.append(cost)
+        # myapp.debug(f"cost_views: {cost_views}")
 
         """Normalize the timeliness, consistency, redundancy, and cost of views"""
         timeliness_views_normalized = []
@@ -543,7 +552,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         reward = 1 if reward > 1 else reward
 
         if vehicle_index == -1:
-            self._reward_history.append(reward)
+            self._reward_history[int(self._time_slots.now())].append(reward)
 
         return reward
 
@@ -769,3 +778,13 @@ class vehicularNetworkEnv(dm_env.Environment):
     def get_edge_observation(observation: np.ndarray) -> np.ndarray:
         """Return the observation of the environment at edge."""
         return observation
+
+    def string_of_information_objects_ordered_by_views(self, information_objects_ordered_by_views: List[List[informationPacket]]) -> str:
+        """Return the string of information objects ordered by views."""
+        string = ""
+        for _ in range(len(information_objects_ordered_by_views)):
+            string += "view" + str(_) + ": "
+            for __ in range(len(information_objects_ordered_by_views[_])):
+                string += str(information_objects_ordered_by_views[_][__]) + " "
+            string += "\n"
+        return string

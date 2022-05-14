@@ -2,7 +2,6 @@
 
 import copy
 from typing import Optional
-
 import acme
 from Environments.environment import vehicularNetworkEnv
 from Agents.MAD3PG.agent import D3PGNetworks, D3PGConfig, D3PGAgent

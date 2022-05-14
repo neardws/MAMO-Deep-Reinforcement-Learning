@@ -16,8 +16,8 @@ class vehicularNetworkEnvConfig:
     data_size_low_bound: float = 100 * 8      # 100 bytes
     data_size_up_bound: float = 1 * 1024 * 1024 * 8    # 1 MB
     data_types_number: int = 10
-    update_interval_low_bound: int = 1
-    update_interval_up_bound: int = 10
+    update_interval_low_bound: float = 0.1
+    update_interval_up_bound: float = 2.0
 
     """Vehicles related."""
     vehicle_number: int = 10

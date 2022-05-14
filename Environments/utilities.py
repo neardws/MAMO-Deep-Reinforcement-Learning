@@ -327,8 +327,8 @@ class sensingAndQueuing(object):
         arrival_moments = np.zeros((self._sensed_information_number,))
         for i in range(self._sensed_information_number):
             if self._sensed_information[i] == 1:
-                if self._action_time == 0:
-                    arrival_moments[i] = 0
+                if self._action_time <= 1 / self._sensing_frequencies[i]:
+                    arrival_moments[i] = arrival_intervals[i]
                 else:
                     arrival_moments[i] = np.floor(self._action_time * self._sensing_frequencies[i]) * arrival_intervals[i]
         return arrival_moments
@@ -343,8 +343,12 @@ class sensingAndQueuing(object):
         """
         updating_moments = np.zeros((self._sensed_information_number,))
         updating_intervals = np.zeros((self._sensed_information_number,))
-
+        
+        # myapp.debug("self._sensed_information: {}".format(self._sensed_information))
         for i in range(self._sensed_information_number):
+            # myapp.debug("i: {}".format(i))
+            # myapp.debug("self._sensed_information[i]: {}".format(self._sensed_information[i]))
+            # myapp.debug("self._sensed_information[i] == 1: {}".format(self._sensed_information[i] == 1))
             if self._sensed_information[i] == 1:
                 updating_intervals[i] = information_list.get_information_update_interval_by_type(self._sensed_information_type[i])
                 if arrival_moments[i] == 0:
