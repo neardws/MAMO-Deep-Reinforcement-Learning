@@ -8,28 +8,44 @@ import numpy as np
 from Environments.dataStruct import applicationList, edge, edgeAction, informationList, informationPacket, informationRequirements, location, timeSlots, vehicleAction, vehicleList, viewList  
 from typing import List, Tuple
 import Environments.environmentConfig as env_config
-import Environments.environment_share as env_share
 from Environments.utilities import sensingAndQueuing, v2iTransmission
 from Log.logger import myapp
 
 class vehicularNetworkEnv(dm_env.Environment):
     """Vehicular Network Environment built on the dm_env framework."""
-    shared_data: env_share = None
+    reward_history: List[List[float]] = None
+
+    @classmethod
+    def init_reward_history(cls, time_slots_number) -> None:
+        """Set the reward history."""
+        cls.reward_history = [[] for _ in range(time_slots_number)]
+
+    @classmethod
+    def append_reward_at_now(cls, now: int, reward: float) -> None:
+        cls.reward_history[now].append(reward)
+
+    @classmethod
+    def get_reward_history_at_now(cls, now: int) -> List[float]:
+        return cls.reward_history[now]
+
+    @classmethod
+    def get_min_reward_at_now(cls, now: int) -> float:
+        return min(cls.reward_history[now])
+
+    @classmethod
+    def get_max_reward_at_now(cls, now: int) -> float:
+        return max(cls.reward_history[now])
 
     def __init__(
         self, 
-        envConfig: env_config.vehicularNetworkEnvConfig = None, 
-        sharedData: env_share = None) -> None:
+        envConfig: env_config.vehicularNetworkEnvConfig = None) -> None:
         """Initialize the environment."""
         if envConfig is None:
             self._config = env_config.vehicularNetworkEnvConfig()
         else:
             self._config = envConfig
 
-        if sharedData is None:
-            shared_data = env_share(self._config.time_slot_number)
-        else:
-            shared_data = sharedData
+        vehicularNetworkEnv.init_reward_history(self._config.time_slot_number)
 
         self._time_slots: timeSlots = timeSlots(
             start=self._config.time_slot_start,
@@ -243,9 +259,9 @@ class vehicularNetworkEnv(dm_env.Environment):
                 vehicle_index=i,
             )
             self._reward[i] = vehicle_reward
-        reward_history_at_now = self.shared_data.shared_data.get_reward_history_at_now(int(self._time_slots.now()))
-        min_reward_history_at_now = self.shared_data.shared_data.get_min_reward_at_now(int(self._time_slots.now()))
-        max_reward_history_at_now = self.shared_data.shared_data.get_max_reward_at_now(int(self._time_slots.now()))
+        reward_history_at_now = vehicularNetworkEnv.get_reward_history_at_now(int(self._time_slots.now()))
+        min_reward_history_at_now = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
+        max_reward_history_at_now = vehicularNetworkEnv.get_max_reward_at_now(int(self._time_slots.now()))
         myapp.debug(f"\nreward_history_at_now:\n{reward_history_at_now}")
         if len(reward_history_at_now) == 0:
             edge_reward = baseline_reward
