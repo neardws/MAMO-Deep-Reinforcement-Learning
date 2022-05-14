@@ -6,20 +6,31 @@ import dm_env
 from dm_env import specs
 import numpy as np
 from Environments.dataStruct import applicationList, edge, edgeAction, informationList, informationPacket, informationRequirements, location, timeSlots, vehicleAction, vehicleList, viewList  
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 import Environments.environmentConfig as env_config
+import Environments.environment_share as env_share
 from Environments.utilities import sensingAndQueuing, v2iTransmission
 from Log.logger import myapp
 
 class vehicularNetworkEnv(dm_env.Environment):
     """Vehicular Network Environment built on the dm_env framework."""
+    shared_data: env_share = None
 
-    def __init__(self, envConfig = None) -> None:
+    def __init__(
+        self, 
+        envConfig: env_config.vehicularNetworkEnvConfig = None, 
+        sharedData: env_share = None) -> None:
         """Initialize the environment."""
         if envConfig is None:
             self._config = env_config.vehicularNetworkEnvConfig()
         else:
             self._config = envConfig
+
+        if sharedData is None:
+            shared_data = env_share(self._config.time_slot_number)
+        else:
+            shared_data = sharedData
+
         self._time_slots: timeSlots = timeSlots(
             start=self._config.time_slot_start,
             end=self._config.time_slot_end,
@@ -99,8 +110,6 @@ class vehicularNetworkEnv(dm_env.Environment):
         self._consistency_views_history: List[float] = []
         self._redundancy_views_history: List[float] = []
         self._cost_views_history: List[float] = []
-
-        self._reward_history: List[List[float]] = [[] for _ in range(self._time_slots.get_number())]
 
         self._reward: np.ndarray = np.zeros(self._reward_size)
 
@@ -234,15 +243,18 @@ class vehicularNetworkEnv(dm_env.Environment):
                 vehicle_index=i,
             )
             self._reward[i] = vehicle_reward
-        myapp.debug(f"\nself._reward_history[int(self._time_slots.now())]:\n{self._reward_history[int(self._time_slots.now())]}")
-        if len(self._reward_history[int(self._time_slots.now())]) == 0:
+        reward_history_at_now = self.shared_data.shared_data.get_reward_history_at_now(int(self._time_slots.now()))
+        min_reward_history_at_now = self.shared_data.shared_data.get_min_reward_at_now(int(self._time_slots.now()))
+        max_reward_history_at_now = self.shared_data.shared_data.get_max_reward_at_now(int(self._time_slots.now()))
+        myapp.debug(f"\nreward_history_at_now:\n{reward_history_at_now}")
+        if len(reward_history_at_now) == 0:
             edge_reward = baseline_reward
-        elif len(self._reward_history[int(self._time_slots.now())]) == 1:
-            edge_reward = baseline_reward - min(self._reward_history[int(self._time_slots.now())])
-        elif len(self._reward_history[int(self._time_slots.now())]) > 1:
-            edge_reward = (baseline_reward - min(self._reward_history[int(self._time_slots.now())])) / (max(self._reward_history[int(self._time_slots.now())]) - min(self._reward_history[int(self._time_slots.now())]))
+        elif len(reward_history_at_now) == 1:
+            edge_reward = baseline_reward - min_reward_history_at_now
+        elif len(reward_history_at_now) > 1:
+            edge_reward = (baseline_reward - min_reward_history_at_now) / (max_reward_history_at_now - min_reward_history_at_now)
         else:
-            raise ValueError("len(self._reward_history) = {}".format(len(self._reward_history[int(self._time_slots.now())])))
+            raise ValueError("len(reward_history_at_now) = {}".format(len(reward_history_at_now)))
         self._reward[-2] = edge_reward
 
         myapp.debug(f"\nreward:\n{self._reward}")
@@ -552,7 +564,10 @@ class vehicularNetworkEnv(dm_env.Environment):
         reward = 1 if reward > 1 else reward
 
         if vehicle_index == -1:
-            self._reward_history[int(self._time_slots.now())].append(reward)
+            self.shared_data.shared_data.append_reward_at_now(
+                now=int(self._time_slots.now()),
+                reward=reward,
+            )
 
         return reward
 

@@ -8,6 +8,7 @@ class vehicularNetworkEnvConfig:
     """Time slot related."""
     time_slot_start: int = 0
     time_slot_end: int = 299
+    time_slot_number: int = 300
     time_slot_length: int = 1
 
     """Information list related."""
