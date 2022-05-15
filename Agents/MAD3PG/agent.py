@@ -1,6 +1,7 @@
 """D3PG agent implementation."""
 import copy
 import dataclasses
+from operator import ne
 from typing import Iterator, List, Optional, Tuple
 from acme import adders
 from acme import core
@@ -19,19 +20,13 @@ from acme.utils import counting
 from acme.utils import loggers
 import reverb
 import sonnet as snt
-import tensorflow as tf
 from Agents.accelerator import get_first_available_accelerator_type, get_replicator
+from Agents.MAD3PG.networks import make_default_D3PGNetworks
 
 @dataclasses.dataclass
 class D3PGConfig:
     """Configuration options for the MAD3PG agent.
     Args:
-        environment: Environment specification.
-        environment_spec: description of the actions, observations, etc.
-        policy_network: the online (optimized) policy.
-        critic_network: the online critic.
-        observation_network: optional network to transform the observations before
-            they are fed into any network.
         discount: discount to use for TD updates.
         batch_size: batch size for updates.
         prefetch_size: size to prefetch from replay.
@@ -52,14 +47,6 @@ class D3PGConfig:
         checkpoint: boolean indicating whether to checkpoint the learner.
         accelerator: 'TPU', 'GPU', or 'CPU'. If omitted, the first available accelerator type from ['TPU', 'GPU', 'CPU'] will be selected.
     """
-    environment: Optional[vehicularNetworkEnv] = None
-    environment_spec: Optional[specs.EnvironmentSpec] = None
-    vehicle_policy_network: Optional[snt.Module] = None
-    vehicle_critic_network: Optional[snt.Module] = None
-    vehicle_observation_network: types.TensorTransformation = tf.identity
-    edge_policy_network: Optional[snt.Module] = None
-    edge_critic_network: Optional[snt.Module] = None
-    edge_observation_network: types.TensorTransformation = tf.identity
     discount: float = 0.99
     batch_size: int = 256
     prefetch_size: int = 4
@@ -182,6 +169,8 @@ class D3PGAgent(agent.Agent):
     def __init__(
         self,
         config: D3PGConfig,
+        environment: vehicularNetworkEnv,
+        networks: D3PGNetworks = Optional[D3PGNetworks](),
     ):
         """Initialize the agent.
         Args:
@@ -193,34 +182,35 @@ class D3PGAgent(agent.Agent):
         if not self._accelerator:
             self._accelerator = get_first_available_accelerator_type(['TPU', 'GPU', 'CPU'])
 
-        online_networks = D3PGNetworks(
-            vehicle_policy_network=self.config.vehicle_policy_network,
-            vehicle_critic_network=self.config.vehicle_critic_network,
-            vehicle_observation_network=self.config.vehicle_observation_network,
-            edge_policy_network=self.config.edge_policy_network,
-            edge_critic_network=self.config.edge_critic_network,
-            edge_observation_network=self.config.edge_observation_network,
-        )
+        if networks is None:
+            online_networks = make_default_D3PGNetworks(
+                vehicle_action_spec=environment.vehicle_action_spec,
+                edge_action_spec=environment.edge_action_spec,
+            )
+        else:
+            online_networks = networks
 
+        self._environment = environment
+        self._environment_spec = specs.make_environment_spec(self._environment)
         # Target networks are just a copy of the online networks.
         target_networks = copy.deepcopy(online_networks)
 
         # Initialize the networks.
-        online_networks.init(self._config.environment_spec)
-        target_networks.init(self._config.environment_spec)
+        online_networks.init(self._environment_spec)
+        target_networks.init(self._environment_spec)
 
         # Create the behavior policy.
-        vehicle_policy_network, edge_policy_network = online_networks.make_policy(self._config.environment_spec, self._config.sigma)
+        vehicle_policy_network, edge_policy_network = online_networks.make_policy(self._environment_spec, self._config.sigma)
 
         # Create the replay server and grab its address.
-        replay_tables = self.make_replay_tables(self._config.environment_spec)
+        replay_tables = self.make_replay_tables(self._environment_spec)
         replay_server = reverb.Server(replay_tables, port=None)
         replay_client = reverb.Client(f'localhost:{replay_server.port}')
 
         # Create actor, dataset, and learner for generating, storing, and consuming
         # data respectively.
         adder = self.make_adder(replay_client)
-        actor = self.make_actor(vehicle_policy_network, edge_policy_network, self._config.environment, adder)
+        actor = self.make_actor(vehicle_policy_network, edge_policy_network, self._environment, adder)
         dataset = self.make_dataset_iterator(replay_client)
         learner = self.make_learner(online_networks, target_networks, dataset, self._config.counter, self._config.logger, self._config.checkpoint)
 
