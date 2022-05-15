@@ -89,6 +89,7 @@ class FeedForwardActor(core.Actor):
         edge_action = self.get_edge_action(edge_observation)
         action.append(edge_action)
         actions = tf.concat(action, axis=1)
+        # Return a numpy array with squeezed out batch dimension.
         return tf2_utils.to_numpy_squeeze(actions)
 
 
@@ -103,10 +104,8 @@ class FeedForwardActor(core.Actor):
         edge_observation: types.NestedTensor = vehicularNetworkEnv.get_edge_observation(observation=observation)
 
         action = self._policy(vehicle_observations, edge_observation)
-
         # Return a numpy array with squeezed out batch dimension.
         return action
-        # return tf2_utils.to_numpy_squeeze(action)
 
     def observe_first(self, timestep: dm_env.TimeStep):
         if self._adder:

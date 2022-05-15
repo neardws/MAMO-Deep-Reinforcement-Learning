@@ -8,8 +8,6 @@ from Test.environmentConfig_test import vehicularNetworkEnvConfig
 from Environments.environment import vehicularNetworkEnv
 from Environments import specs
 from Agents.MAD3PG.networks import make_policy_network
-from tensorflow.python.ops.numpy_ops import np_config
-np_config.enable_numpy_behavior()
 
 
 class ActorTest(absltest.TestCase):
