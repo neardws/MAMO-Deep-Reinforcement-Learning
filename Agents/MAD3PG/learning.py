@@ -245,10 +245,10 @@ class D3PGLearner(acme.Learner):
 
             for observation in transitions.observation:
                 vehicle_observations = vehicularNetworkEnv.get_vehicle_observations(
-                    vehicle_number=self._environment.vehicle_number, 
-                    information_number=self._environment.information_number, 
-                    sensed_information_number=self._environment.sensed_information_number, 
-                    vehicle_observation_size=self._environment.vehicle_observation_size,
+                    vehicle_number=self._environment._config.vehicle_number, 
+                    information_number=self._environment._config.information_number, 
+                    sensed_information_number=self._environment._config.sensed_information_number, 
+                    vehicle_observation_size=self._environment._vehicle_observation_size,
                     observation=observation,
                 )
                 for i, vehicle_observation in enumerate(vehicle_observations):
@@ -256,10 +256,10 @@ class D3PGLearner(acme.Learner):
             
             for observation in transitions.next_observation:
                 vehicle_observations = vehicularNetworkEnv.get_vehicle_observations(
-                    vehicle_number=self._environment.vehicle_number, 
-                    information_number=self._environment.information_number, 
-                    sensed_information_number=self._environment.sensed_information_number, 
-                    vehicle_observation_size=self._environment.vehicle_observation_size,
+                    vehicle_number=self._environment._config.vehicle_number, 
+                    information_number=self._environment._config.information_number, 
+                    sensed_information_number=self._environment._config.sensed_information_number, 
+                    vehicle_observation_size=self._environment._vehicle_observation_size,
                     observation=observation,
                 )
                 for i, vehicle_observation in enumerate(vehicle_observations):

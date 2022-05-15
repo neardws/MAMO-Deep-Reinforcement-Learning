@@ -2,8 +2,8 @@ import sys
 sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
 
 from Environments.environment import vehicularNetworkEnv
-from Environments import specs
 from Test.environmentConfig_test import vehicularNetworkEnvConfig
+from Environments import specs
 from absl.testing import absltest
 from acme import environment_loop
 from Agents.RA import actors

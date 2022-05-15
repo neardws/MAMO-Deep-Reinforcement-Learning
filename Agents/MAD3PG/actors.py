@@ -52,38 +52,57 @@ class FeedForwardActor(core.Actor):
         self._edge_policy_network = edge_policy_network
         self._environment = environment
 
-    @tf.function
-    def _policy(self, observation: types.NestedTensor) -> types.NestedTensor:
-        # Add a dummy batch dimension and as a side effect convert numpy to TF.
-        vehicle_observations: List[types.NestedTensor] = vehicularNetworkEnv.get_vehicle_observations(
-            vehicle_number=self._environment.vehicle_number, 
-            information_number=self._environment.information_number, 
-            sensed_information_number=self._environment.sensed_information_number, 
-            vehicle_observation_size=self._environment.vehicle_observation_size,
-            observation=observation)
-        edge_observation = vehicularNetworkEnv.get_edge_observation(observation=observation)
 
+    @tf.function
+    def get_vehicle_action(
+        self, 
+        vehicle_observation: types.NestedTensor,
+    ) -> types.NestedArray:
+        # Add a dummy batch dimension and as a side effect convert numpy to TF.
+        vehicle_batched_observation = tf2_utils.add_batch_dim(vehicle_observation)
+        # Compute the policy, conditioned on the observation.
+        vehicle_policy = self._vehicle_policy_network(vehicle_batched_observation)
+        # Sample from the policy if it is stochastic.
+        vehicle_action = vehicle_policy.sample() if isinstance(vehicle_policy, tfd.Distribution) else vehicle_policy
+        return vehicle_action
+
+    @tf.function
+    def get_edge_action(
+        self,
+        edge_observation: types.NestedTensor,
+    ) -> types.NestedTensor:
+        edge_batched_observation = tf2_utils.add_batch_dim(edge_observation)
+        edge_policy = self._edge_policy_network(edge_batched_observation)
+        edge_action = edge_policy.sample() if isinstance(edge_policy, tfd.Distribution) else edge_policy
+        return edge_action
+
+    def _policy(
+        self, 
+        vehicle_observations: List[types.NestedTensor],
+        edge_observation: types.NestedTensor
+    ) -> types.NestedTensor:
         action = []
         for i in range(len(vehicle_observations)):
-            vehicle_batched_observations = tf2_utils.add_batch_dim(vehicle_observations[i])
-            # Compute the policy, conditioned on the observation.
-            vehicle_policy = self._vehicle_policy_network(vehicle_batched_observations)
-            # Sample from the policy if it is stochastic.
-            vehicle_action = vehicle_policy.sample() if isinstance(vehicle_policy, tfd.Distribution) else vehicle_policy
-            for j in vehicle_action:
-                action.append(j)
+            vehicle_action = self.get_vehicle_action(vehicle_observations[i])
+            action.append(vehicle_action)
 
-        edge_batched_observations = tf2_utils.add_batch_dim(edge_observation)
-        edge_policy = self._edge_policy_network(edge_batched_observations)
-        edge_action = edge_policy.sample() if isinstance(edge_policy, tfd.Distribution) else edge_policy
-        for i in edge_action:
-            action.append(i)
+        edge_action = self.get_edge_action(edge_observation)
+        action.append(edge_action)
+        actions = tf.concat(action, axis=1)
+        return tf2_utils.to_numpy_squeeze(actions)
 
-        return np.array(action)
 
-    def select_action(self, observation: types.NestedArray) -> types.NestedArray:
+    def select_action(self, observation: np.ndarray) -> types.NestedArray:
         # Pass the observation through the policy network.
-        action = self._policy(observation)
+        vehicle_observations: List[types.NestedTensor] = vehicularNetworkEnv.get_vehicle_observations(
+            vehicle_number=self._environment._config.vehicle_number, 
+            information_number=self._environment._config.information_number, 
+            sensed_information_number=self._environment._config.sensed_information_number, 
+            vehicle_observation_size=self._environment._vehicle_observation_size,
+            observation=observation)
+        edge_observation: types.NestedTensor = vehicularNetworkEnv.get_edge_observation(observation=observation)
+
+        action = self._policy(vehicle_observations, edge_observation)
 
         # Return a numpy array with squeezed out batch dimension.
         return action

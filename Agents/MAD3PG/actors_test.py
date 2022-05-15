@@ -1,52 +1,39 @@
-from acme import environment_loop
-from acme import specs
-from acme.agents.tf import actors
-from acme.testing import fakes
-import dm_env
-import numpy as np
-import sonnet as snt
-import tensorflow as tf
+import sys
+sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
+
+import environment_loop
 from absl.testing import absltest
+from Agents.MAD3PG import actors
+from Test.environmentConfig_test import vehicularNetworkEnvConfig
+from Environments.environment import vehicularNetworkEnv
+from Environments import specs
+from Agents.MAD3PG.networks import make_policy_network
+from tensorflow.python.ops.numpy_ops import np_config
+np_config.enable_numpy_behavior()
 
-
-def _make_fake_env() -> dm_env.Environment:
-    env_spec = specs.EnvironmentSpec(
-        observations=specs.Array(shape=(10, 5), dtype=np.float32),
-        actions=specs.DiscreteArray(num_values=3),
-        rewards=specs.Array(shape=(), dtype=np.float32),
-        discounts=specs.BoundedArray(
-            shape=(), dtype=np.float32, minimum=0., maximum=1.),
-    )
-    return fakes.Environment(env_spec, episode_length=10)
 
 class ActorTest(absltest.TestCase):
 
+
     def test_feedforward(self):
-        environment = _make_fake_env()
-        env_spec = specs.make_environment_spec(environment)
 
-        network = snt.Sequential([
-            snt.Flatten(),
-            snt.Linear(env_spec.actions.num_values),
-            lambda x: tf.argmax(x, axis=-1, output_type=env_spec.actions.dtype),
-        ])
+        config = vehicularNetworkEnvConfig()
+        config.vehicle_list_seeds += [i for i in range(config.vehicle_number)]
+        config.view_list_seeds += [i for i in range(config.view_number)]
 
-        actor = actors.FeedForwardActor(network)
-        loop = environment_loop.EnvironmentLoop(environment, actor)
-        loop.run(20)
+        env = vehicularNetworkEnv(config)
 
-    def test_recurrent(self):
-        environment = _make_fake_env()
-        env_spec = specs.make_environment_spec(environment)
+        env_spec = specs.make_environment_spec(env)
 
-        network = snt.DeepRNN([
-            snt.Flatten(),
-            snt.Linear(env_spec.actions.num_values),
-            lambda x: tf.argmax(x, axis=-1, output_type=env_spec.actions.dtype),
-        ])
+        vehicle_policy_network = make_policy_network(env_spec.vehicle_actions)
+        edge_policy_network = make_policy_network(env_spec.edge_actions)
 
-        actor = actors.RecurrentActor(network)
-        loop = environment_loop.EnvironmentLoop(environment, actor)
+        actor = actors.FeedForwardActor(
+            vehicle_policy_network=vehicle_policy_network,
+            edge_policy_network=edge_policy_network,
+            environment=env,
+        )
+        loop = environment_loop.EnvironmentLoop(env, actor)
         loop.run(20)
 
 

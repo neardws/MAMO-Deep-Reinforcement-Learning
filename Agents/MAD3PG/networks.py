@@ -11,6 +11,25 @@ import numpy as np
 import sonnet as snt
 
 
+def make_policy_network(
+        action_spec: specs.BoundedArray,
+        policy_layer_sizes: Sequence[int] = (256, 256, 256),
+    ) -> types.TensorTransformation:
+        """Creates the networks used by the agent."""
+
+        # Get total number of action dimensions from action spec.
+        num_dimensions = np.prod(action_spec.shape, dtype=int)
+
+        # Create the policy network.
+        policy_network = snt.Sequential([
+            networks.LayerNormMLP(policy_layer_sizes, activate_final=True),
+            networks.NearZeroInitializedLinear(num_dimensions),
+            networks.TanhToSpec(action_spec),
+        ])
+
+        return policy_network
+
+
 def make_default_networks(
     action_spec: specs.BoundedArray,
     policy_layer_sizes: Sequence[int] = (256, 256, 256),

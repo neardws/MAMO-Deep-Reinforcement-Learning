@@ -10,6 +10,7 @@ from typing import List, Tuple
 import Environments.environmentConfig as env_config
 from Environments.utilities import sensingAndQueuing, v2iTransmission
 from Log.logger import myapp
+import tensorflow as tf
 
 class vehicularNetworkEnv(dm_env.Environment):
     """Vehicular Network Environment built on the dm_env framework."""
@@ -45,7 +46,8 @@ class vehicularNetworkEnv(dm_env.Environment):
         else:
             self._config = envConfig
 
-        vehicularNetworkEnv.init_reward_history(self._config.time_slot_number)
+        if vehicularNetworkEnv.reward_history is None:
+            vehicularNetworkEnv.init_reward_history(self._config.time_slot_number)
 
         self._time_slots: timeSlots = timeSlots(
             start=self._config.time_slot_start,
@@ -260,14 +262,15 @@ class vehicularNetworkEnv(dm_env.Environment):
             )
             self._reward[i] = vehicle_reward
         reward_history_at_now = vehicularNetworkEnv.get_reward_history_at_now(int(self._time_slots.now()))
-        min_reward_history_at_now = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
-        max_reward_history_at_now = vehicularNetworkEnv.get_max_reward_at_now(int(self._time_slots.now()))
         myapp.debug(f"\nreward_history_at_now:\n{reward_history_at_now}")
         if len(reward_history_at_now) == 0:
             edge_reward = baseline_reward
         elif len(reward_history_at_now) == 1:
+            min_reward_history_at_now = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
             edge_reward = baseline_reward - min_reward_history_at_now
         elif len(reward_history_at_now) > 1:
+            min_reward_history_at_now = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
+            max_reward_history_at_now = vehicularNetworkEnv.get_max_reward_at_now(int(self._time_slots.now()))
             edge_reward = (baseline_reward - min_reward_history_at_now) / (max_reward_history_at_now - min_reward_history_at_now)
         else:
             raise ValueError("len(reward_history_at_now) = {}".format(len(reward_history_at_now)))
@@ -580,7 +583,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         reward = 1 if reward > 1 else reward
 
         if vehicle_index == -1:
-            self.shared_data.shared_data.append_reward_at_now(
+            vehicularNetworkEnv.append_reward_at_now(
                 now=int(self._time_slots.now()),
                 reward=reward,
             )
@@ -594,7 +597,8 @@ class vehicularNetworkEnv(dm_env.Environment):
             shape=(self._vehicle_observation_size,),
             dtype=float,
             minimum=np.zeros((self._vehicle_observation_size,)),
-            maximum=np.ones((self._vehicle_observation_size,))
+            maximum=np.ones((self._vehicle_observation_size,)),
+            name='vehicle_observations'
         )
 
     """Define the action spaces of vehicle."""
@@ -604,7 +608,8 @@ class vehicularNetworkEnv(dm_env.Environment):
             shape=(self._vehicle_action_size,),
             dtype=float,
             minimum=np.zeros((self._vehicle_action_size,)),
-            maximum=np.ones((self._vehicle_action_size,))
+            maximum=np.ones((self._vehicle_action_size,)),
+            name='vehicle_actions'
         )
 
     """Define the action spaces of vehicle in critic network."""
@@ -614,7 +619,8 @@ class vehicularNetworkEnv(dm_env.Environment):
             shape=(self._vehicle_critic_network_action_size,),
             dtype=float,
             minimum=np.zeros((self._vehicle_critic_network_action_size,)),
-            maximum=np.ones((self._vehicle_critic_network_action_size,))
+            maximum=np.ones((self._vehicle_critic_network_action_size,)),
+            name='critic_vehicle_actions'
         )
     
     """Define the observation spaces of edge."""
@@ -624,7 +630,8 @@ class vehicularNetworkEnv(dm_env.Environment):
             shape=(self._edge_observation_size,),
             dtype=float,
             minimum=np.zeros((self._edge_observation_size,)),
-            maximum=np.ones((self._edge_observation_size,))
+            maximum=np.ones((self._edge_observation_size,)),
+            name='edge_observations'
         )
 
     """Define the action spaces of edge."""
@@ -634,7 +641,8 @@ class vehicularNetworkEnv(dm_env.Environment):
             shape=(self._edge_action_size,),
             dtype=float,
             minimum=np.zeros((self._edge_action_size,)),
-            maximum=np.ones((self._edge_action_size,))
+            maximum=np.ones((self._edge_action_size,)),
+            name='edge_actions'
         )
 
     """Define the action spaces of edge in critic network."""
@@ -644,7 +652,8 @@ class vehicularNetworkEnv(dm_env.Environment):
             shape=(self._edge_critic_network_action_size,),
             dtype=float,
             minimum=np.zeros((self._edge_critic_network_action_size,)),
-            maximum=np.ones((self._edge_critic_network_action_size,))
+            maximum=np.ones((self._edge_critic_network_action_size,)),
+            name='critic_edge_actions',
         )
 
     """Define the gloabl observation spaces."""
@@ -655,7 +664,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             dtype=float,
             minimum=np.zeros((self._observation_size,)),
             maximum=np.ones((self._observation_size,)),
-            name='observation'
+            name='observations'
         )
     
     """Define the gloabl action spaces."""
@@ -666,7 +675,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             dtype=float,
             minimum=np.zeros((self._action_size,)),
             maximum=np.ones((self._action_size,)),
-            name='action'
+            name='actions'
         )
 
     def reward_spec(self):
@@ -674,7 +683,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         return specs.Array(
             shape=(self._reward_size,), 
             dtype=float, 
-            name='reward'
+            name='rewards'
         )
     
     def _observation(self) -> np.ndarray:
@@ -732,7 +741,6 @@ class vehicularNetworkEnv(dm_env.Environment):
         for _ in range(self._config.information_number):
             observation[index] = float(self._information_requirements.get_information_required_at_now(self._time_slots.now())[_])
             index += 1
-
         return observation
 
     @staticmethod
