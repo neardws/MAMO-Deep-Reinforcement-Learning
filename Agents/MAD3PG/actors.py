@@ -28,7 +28,12 @@ class FeedForwardActor(core.Actor):
         self,
         vehicle_policy_network: snt.Module,
         edge_policy_network: snt.Module,
-        environment: vehicularNetworkEnv,
+        
+        vehicle_number: int,
+        information_number: int,
+        sensed_information_number: int,
+        vehicle_observation_size: int,
+
         adder: Optional[adders.Adder] = None,
         variable_client: Optional[tf2_variable_utils.VariableClient] = None,
     ):
@@ -50,7 +55,11 @@ class FeedForwardActor(core.Actor):
         self._variable_client = variable_client
         self._vehicle_policy_network = vehicle_policy_network
         self._edge_policy_network = edge_policy_network
-        self._environment = environment
+        
+        self._vehicle_number = vehicle_number
+        self._information_number = information_number
+        self._sensed_information_number = sensed_information_number
+        self._vehicle_observation_size = vehicle_observation_size
 
 
     @tf.function
@@ -96,10 +105,10 @@ class FeedForwardActor(core.Actor):
     def select_action(self, observation: np.ndarray) -> types.NestedArray:
         # Pass the observation through the policy network.
         vehicle_observations: List[types.NestedTensor] = vehicularNetworkEnv.get_vehicle_observations(
-            vehicle_number=self._environment._config.vehicle_number, 
-            information_number=self._environment._config.information_number, 
-            sensed_information_number=self._environment._config.sensed_information_number, 
-            vehicle_observation_size=self._environment._vehicle_observation_size,
+            vehicle_number=self._vehicle_number, 
+            information_number=self._information_number, 
+            sensed_information_number=self._sensed_information_number, 
+            vehicle_observation_size=self._vehicle_observation_size,
             observation=observation)
         edge_observation: types.NestedTensor = vehicularNetworkEnv.get_edge_observation(observation=observation)
 

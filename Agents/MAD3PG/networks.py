@@ -6,7 +6,6 @@ from Environments import specs
 from acme import types
 from acme.tf import networks
 from acme.tf import utils as tf2_utils
-from Agents.MAD3PG.agent import D3PGNetworks
 import numpy as np
 import sonnet as snt
 
@@ -69,19 +68,21 @@ def make_default_networks(
 
 
 def make_default_D3PGNetworks(
-    vehicle_action_spec: specs.BoundedArray = Optional(),
+    vehicle_action_spec: Optional[specs.BoundedArray] = None,
     vehicle_policy_layer_sizes: Sequence[int] = (256, 256, 256),
     vehicle_critic_layer_sizes: Sequence[int] = (512, 512, 256),
     vehicle_vmin: float = -150.,
     vehicle_vmax: float = 150.,
     vehicle_num_atoms: int = 51,
-    edge_action_spec: specs.BoundedArray = Optional(),
+    edge_action_spec: Optional[specs.BoundedArray] = None,
     edge_policy_layer_sizes: Sequence[int] = (256, 256, 256),
     edge_critic_layer_sizes: Sequence[int] = (512, 512, 256),
     edge_vmin: float = -150.,
     edge_vmax: float = 150.,
     edge_num_atoms: int = 51,
-) -> D3PGNetworks:
+):
+    from Agents.MAD3PG.agent import D3PGNetworks
+
     # Get total number of action dimensions from action spec.
     vehicle_num_dimensions = np.prod(vehicle_action_spec.shape, dtype=int)
 

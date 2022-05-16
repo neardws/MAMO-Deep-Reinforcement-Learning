@@ -105,3 +105,7 @@ def average_gradients_across_replicas(replica_context, gradients):
         results[ii] = result
 
     return results 
+
+
+if __name__ == '__main__':
+    get_first_available_accelerator_type()

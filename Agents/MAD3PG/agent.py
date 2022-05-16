@@ -65,7 +65,7 @@ class D3PGConfig:
     counter: Optional[counting.Counter] = None
     logger: Optional[loggers.Logger] = None
     checkpoint: bool = True
-    accelerator: Optional[str] = None
+    accelerator: Optional[str] = 'GPU'
 
 
 @dataclasses.dataclass
@@ -170,7 +170,7 @@ class D3PGAgent(agent.Agent):
         self,
         config: D3PGConfig,
         environment: vehicularNetworkEnv,
-        networks: D3PGNetworks = Optional[D3PGNetworks](),
+        networks: Optional[D3PGNetworks] = None,
     ):
         """Initialize the agent.
         Args:
@@ -209,10 +209,25 @@ class D3PGAgent(agent.Agent):
 
         # Create actor, dataset, and learner for generating, storing, and consuming
         # data respectively.
-        adder = self.make_adder(replay_client)
-        actor = self.make_actor(vehicle_policy_network, edge_policy_network, self._environment, adder)
-        dataset = self.make_dataset_iterator(replay_client)
-        learner = self.make_learner(online_networks, target_networks, dataset, self._config.counter, self._config.logger, self._config.checkpoint)
+        adder = self.make_adder(replay_client=replay_client)
+        actor = self.make_actor(
+            vehicle_policy_network=vehicle_policy_network, 
+            edge_policy_network=edge_policy_network,
+            vehicle_number=self._environment._config.vehicle_number,
+            information_number=self._environment._config.information_number,
+            sensed_information_number=self._environment._config.sensed_information_number,
+            vehicle_observation_size=self._environment._vehicle_observation_size,
+            adder=adder,
+        )
+        dataset = self.make_dataset_iterator(replay_client=replay_client)
+        learner = self.make_learner(
+            online_networks=online_networks,
+            target_networks=target_networks,
+            dataset=dataset,
+            counter=self._config.counter,
+            logger=self._config.logger,
+            checkpoint=self._config.checkpoint,
+        )
 
         super().__init__(
             actor=actor,
@@ -255,13 +270,13 @@ class D3PGAgent(agent.Agent):
 
     def make_dataset_iterator(
         self,
-        reverb_client: reverb.Client,
+        replay_client: reverb.Client,
     ) -> Iterator[reverb.ReplaySample]:
         """Create a dataset iterator to use for learning/updating the agent."""
         # The dataset provides an interface to sample from replay.
         dataset = datasets.make_reverb_dataset(
             table=self._config.replay_table_name,
-            server_address=reverb_client.server_address,
+            server_address=replay_client.server_address,
             batch_size=self._config.batch_size,
             prefetch_size=self._config.prefetch_size)
 
@@ -286,7 +301,10 @@ class D3PGAgent(agent.Agent):
         self,
         vehicle_policy_network: snt.Module,
         edge_policy_network: snt.Module,
-        environment: vehicularNetworkEnv,
+        vehicle_number: int,
+        information_number: int,
+        sensed_information_number: int,
+        vehicle_observation_size: int,
         adder: Optional[adders.Adder] = None,
         variable_source: Optional[core.VariableSource] = None,
     ):
@@ -311,7 +329,10 @@ class D3PGAgent(agent.Agent):
         return actors.FeedForwardActor(
             vehicle_policy_network=vehicle_policy_network,
             edge_policy_network=edge_policy_network,
-            environment=environment,
+            vehicle_number=vehicle_number,
+            information_number=information_number,
+            sensed_information_number=sensed_information_number,
+            vehicle_observation_size=vehicle_observation_size,
             adder=adder,
             variable_client=variable_client,
         )
@@ -358,4 +379,10 @@ class D3PGAgent(agent.Agent):
             counter=counter,
             logger=logger,
             checkpoint=checkpoint,
+
+            vehicle_number=self._environment._config.vehicle_number,
+            information_number=self._environment._config.information_number,
+            sensed_information_number=self._environment._config.sensed_information_number,
+            vehicle_observation_size=self._environment._vehicle_observation_size,
+            vehicle_action_size=self._environment._vehicle_action_size,
         )

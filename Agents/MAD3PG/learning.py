@@ -58,7 +58,11 @@ class D3PGLearner(acme.Learner):
         logger: Optional[loggers.Logger] = None,
         checkpoint: bool = True,
         
-        environment: Optional[vehicularNetworkEnv] = None,
+        vehicle_number: int = None,
+        information_number: int = None,
+        sensed_information_number: int = None,
+        vehicle_observation_size: int = None,
+        vehicle_action_size: int = None,
     ):
         """Initializes the learner.
 
@@ -139,7 +143,7 @@ class D3PGLearner(acme.Learner):
 
         # Expose the variables.
         vehicle_policy_network_to_expose = snt.Sequential(
-            [self._target_vehicel_observation_network, self._target_vehicle_policy_network])
+            [self._target_vehicle_observation_network, self._target_vehicle_policy_network])
         edge_policy_network_to_expose = snt.Sequential(
             [self._target_edge_observation_network, self._target_edge_policy_network])
         self._variables = {
@@ -197,7 +201,11 @@ class D3PGLearner(acme.Learner):
         # fill the replay buffer.
         self._timestamp = None
 
-        self._environment = environment
+        self._vehicle_number = vehicle_number
+        self._information_number = information_number
+        self._sensed_information_number = sensed_information_number
+        self._vehicle_observation_size = vehicle_observation_size
+        self._vehicle_action_size = vehicle_action_size
 
     @tf.function
     def _step(self) -> Dict[str, tf.Tensor]:
@@ -231,24 +239,30 @@ class D3PGLearner(acme.Learner):
         transitions: types.Transition = sample.data  # Assuming ReverbSample.
 
         # Cast the additional discount to match the environment discount dtype.
-        discount = tf.cast(self._discount, dtype=transitions.discount.dtype)
+        discount = tf.cast(self._discount, dtype=tf.float32)
 
         with tf.GradientTape(persistent=True) as tape:
             """Deal with the observations."""
             vehicle_observations_list: List[List[np.ndarray]] = []
-            for _ in range(self._environment._config.vehicle_number):
+            for _ in range(self._vehicle_number):
                 vehicle_observations_list.append([])
 
             vehicle_next_observations_list: List[List[np.ndarray]] = []
-            for _ in range(self._environment._config.vehicle_number):
+            for _ in range(self._vehicle_number):
                 vehicle_next_observations_list.append([])
 
-            for observation in transitions.observation:
+            print("**********************************************************")
+            print("transitions: ", transitions)
+            print("type(transitions): ", type(transitions))
+            print("transitions.observations: ", transitions.observation)
+            print("**********************************************************")
+
+            for observation in transitions.observation.values():
                 vehicle_observations = vehicularNetworkEnv.get_vehicle_observations(
-                    vehicle_number=self._environment._config.vehicle_number, 
-                    information_number=self._environment._config.information_number, 
-                    sensed_information_number=self._environment._config.sensed_information_number, 
-                    vehicle_observation_size=self._environment._vehicle_observation_size,
+                    vehicle_number=self._vehicle_number, 
+                    information_number=self._information_number, 
+                    sensed_information_number=self._sensed_information_number, 
+                    vehicle_observation_size=self._vehicle_observation_size,
                     observation=observation,
                 )
                 for i, vehicle_observation in enumerate(vehicle_observations):
@@ -256,24 +270,24 @@ class D3PGLearner(acme.Learner):
             
             for observation in transitions.next_observation:
                 vehicle_observations = vehicularNetworkEnv.get_vehicle_observations(
-                    vehicle_number=self._environment._config.vehicle_number, 
-                    information_number=self._environment._config.information_number, 
-                    sensed_information_number=self._environment._config.sensed_information_number, 
-                    vehicle_observation_size=self._environment._vehicle_observation_size,
+                    vehicle_number=self._vehicle_number, 
+                    information_number=self._information_number, 
+                    sensed_information_number=self._sensed_information_number, 
+                    vehicle_observation_size=self._vehicle_observation_size,
                     observation=observation,
                 )
                 for i, vehicle_observation in enumerate(vehicle_observations):
                     vehicle_next_observations_list[i].append(vehicle_observation)
 
             vehicle_observations_np_array_list = []
-            for vehicle_index in range(self._environment._config.vehicle_number):
+            for vehicle_index in range(self._vehicle_number):
                 vehicle_observations_np_array: np.ndarray = np.expand_dims(vehicle_observations_list[vehicle_index][0], axis=0)
                 for observation in vehicle_observations_list[vehicle_index][1:]:
                     vehicle_observations_np_array = np.concatenate((vehicle_observations_np_array, np.expand_dims(observation, axis=0)), axis=0)
                 vehicle_observations_np_array_list.append(vehicle_observations_np_array)
 
             vehicle_next_observations_np_array_list = []
-            for vehicle_index in range(self._environment._config.vehicle_number):
+            for vehicle_index in range(self._vehicle_number):
                 vehicle_next_observations_np_array: np.ndarray = np.expand_dims(vehicle_next_observations_list[vehicle_index][0], axis=0)
                 for observation in vehicle_next_observations_list[vehicle_index][1:]:
                     vehicle_next_observations_np_array = np.concatenate((vehicle_next_observations_np_array, np.expand_dims(observation, axis=0)), axis=0)
@@ -285,7 +299,7 @@ class D3PGLearner(acme.Learner):
             o_t = tree.map_structure(tf.stop_gradient, o_t)
             vehicles_a_t = self._target_vehicle_policy_network(o_t)
             vehicles_a_t_list.append(vehicles_a_t)
-            for vehicle_index in range(1, self._environment._config.vehicle_number):
+            for vehicle_index in range(1, self._vehicle_number):
                 o_t = self._target_vehicle_observation_network(vehicle_next_observations_np_array_list[vehicle_index])
                 o_t = tree.map_structure(tf.stop_gradient, o_t)
                 a_t = self._target_vehicle_policy_network(o_t)
@@ -295,7 +309,7 @@ class D3PGLearner(acme.Learner):
             """Compute the loss for the policy and critic of vehicles."""
             vehicle_critic_losses = []
             vehicle_policy_losses = []
-            for vehicle_index in range(self._environment._config.vehicle_number):
+            for vehicle_index in range(self._vehicle_number):
                 # Maybe transform the observation before feeding into policy and critic.
                 # Transforming the observations this way at the start of the learning
                 # step effectively means that the policy and critic share observation
@@ -310,7 +324,7 @@ class D3PGLearner(acme.Learner):
                 o_t = tree.map_structure(tf.stop_gradient, o_t)
 
                 # Critic learning.
-                q_tm1 = self._vehicle_critic_network(o_tm1, transitions.action[: self._environment._config.vehicle_number * self._environment._vehicle_action_size])
+                q_tm1 = self._vehicle_critic_network(o_tm1, transitions.action[: self._vehicle_number * self._vehicle_action_size])
                 q_t = self._target_vehicle_critic_network(o_t, vehicles_a_t)
 
                 # Critic loss.
@@ -324,7 +338,7 @@ class D3PGLearner(acme.Learner):
                     dpg_a_t = self._vehicle_policy_network(o_t)
                 else:
                     dpg_a_t = vehicles_a_t_list[0]
-                for i in range(self._environment._config.vehicle_number):
+                for i in range(self._vehicle_number):
                     if i != 0 and i != vehicle_index:
                         dpg_a_t = tf.concat([dpg_a_t, vehicles_a_t_list[i]], axis=0)
                     elif i != 0 and i == vehicle_index:
