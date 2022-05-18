@@ -18,20 +18,20 @@
 import operator
 import time
 from typing import Optional, Sequence
-
-from acme import core
+from Agents.MAD3PG.actors import FeedForwardActor
+from Environments.environment import vehicularNetworkEnv
+from Agents.MAD3PG import base
 from acme.utils import counting
 from acme.utils import loggers
 from acme.utils import observers as observers_lib
 from acme.utils import signals
 
-import dm_env
 from dm_env import specs
 import numpy as np
 import tree
 
 
-class EnvironmentLoop(core.Worker):
+class EnvironmentLoop(base.Worker):
     """A simple RL environment loop.
 
     This takes `Environment` and `Actor` instances and coordinates their
@@ -57,8 +57,8 @@ class EnvironmentLoop(core.Worker):
 
     def __init__(
         self,
-        environment: dm_env.Environment,
-        actor: core.Actor,
+        environment: vehicularNetworkEnv,
+        actor: base.Actor,
         counter: Optional[counting.Counter] = None,
         logger: Optional[loggers.Logger] = None,
         should_update: bool = True,
@@ -104,9 +104,16 @@ class EnvironmentLoop(core.Worker):
             # Generate an action from the agent's policy and step the environment.
             action = self._actor.select_action(timestep.observation)
             timestep = self._environment.step(action)
-
+            vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
+                vehicle_number=self._environment._config.vehicle_number,
+                information_number=self._environment._config.information_number,
+                sensed_information_number=self._environment._config.sensed_information_number,
+                vehicle_observation_size=self._environment._vehicle_observation_size,
+                observation=timestep.observation,
+                is_output_two_dimension=False,
+            )
             # Have the agent observe the timestep and let the actor update itself.
-            self._actor.observe(action, next_timestep=timestep)
+            self._actor.observe(action=action, next_timestep=timestep, extras=vehicle_observation)
             for observer in self._observers:
                 # One environment step was completed. Observe the current state of the
                 # environment, the current timestep and the action.

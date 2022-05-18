@@ -1,8 +1,8 @@
 """Generic actor implementation, using TensorFlow and Sonnet."""
 
-from typing import Optional, List
+from typing import Optional
 from acme import adders
-from acme import core
+from Agents.MAD3PG import base
 from acme import types
 import numpy as np
 from acme.tf import utils as tf2_utils
@@ -16,7 +16,7 @@ from Environments.environment import vehicularNetworkEnv
 tfd = tfp.distributions
 
 
-class FeedForwardActor(core.Actor):
+class FeedForwardActor(base.Actor):
     """A feed-forward actor.
 
     An actor based on a feed-forward policy which takes non-batched observations
@@ -87,12 +87,12 @@ class FeedForwardActor(core.Actor):
 
     def _policy(
         self, 
-        vehicle_observations: List[types.NestedTensor],
+        vehicle_observations: types.NestedTensor,
         edge_observation: types.NestedTensor
     ) -> types.NestedTensor:
         action = []
-        for i in range(len(vehicle_observations)):
-            vehicle_action = self.get_vehicle_action(vehicle_observations[i])
+        for i in range(vehicle_observations.shape[0]):
+            vehicle_action = self.get_vehicle_action(vehicle_observations[i,:])
             action.append(vehicle_action)
 
         edge_action = self.get_edge_action(edge_observation)
@@ -104,7 +104,7 @@ class FeedForwardActor(core.Actor):
 
     def select_action(self, observation: np.ndarray) -> types.NestedArray:
         # Pass the observation through the policy network.
-        vehicle_observations: List[types.NestedTensor] = vehicularNetworkEnv.get_vehicle_observations(
+        vehicle_observations: types.NestedTensor = vehicularNetworkEnv.get_vehicle_observations(
             vehicle_number=self._vehicle_number, 
             information_number=self._information_number, 
             sensed_information_number=self._sensed_information_number, 

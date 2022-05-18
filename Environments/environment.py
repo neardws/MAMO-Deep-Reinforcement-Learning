@@ -2,7 +2,7 @@ import sys
 sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
 
 """Vehicular Network Environments."""
-import dm_env
+import Environments
 from dm_env import specs
 import numpy as np
 from Environments.dataStruct import applicationList, edge, edgeAction, informationList, informationPacket, informationRequirements, location, timeSlots, vehicleAction, vehicleList, viewList  
@@ -12,7 +12,7 @@ from Environments.utilities import sensingAndQueuing, v2iTransmission
 from Log.logger import myapp
 import tensorflow as tf
 
-class vehicularNetworkEnv(dm_env.Environment):
+class vehicularNetworkEnv(Environments.Environment):
     """Vehicular Network Environment built on the dm_env framework."""
     reward_history: List[List[float]] = None
 
@@ -189,7 +189,7 @@ class vehicularNetworkEnv(dm_env.Environment):
             reward_size, vehicle_critic_network_action_size, edge_critic_network_action_size
 
 
-    def reset(self) -> dm_env.TimeStep:
+    def reset(self) -> Environments.TimeStep:
         """Resets the state of the environment and returns an initial observation.
         Returns: observation (object): the initial observation of the
             space.
@@ -211,9 +211,17 @@ class vehicularNetworkEnv(dm_env.Environment):
                 )
             ])
         self._reset_next_step = False
-        return dm_env.restart(self._observation())
+        observation = self._observation()
+        vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
+            vehicle_number=self._config.vehicle_number,
+            information_number=self._config.information_number,
+            sensed_information_number=self._config.sensed_information_number,
+            vehicle_observation_size=self._vehicle_observation_size,
+            observation=observation,
+        )
+        return Environments.restart(observation=self._observation(), vehicle_observation=vehicle_observation)
 
-    def step(self, action: np.ndarray) -> dm_env.TimeStep:
+    def step(self, action: np.ndarray) -> Environments.TimeStep:
         """Run one timestep of the environment's dynamics. When end of
         episode is reached, you are responsible for calling `reset()`
         to reset this environment's state.
@@ -271,7 +279,10 @@ class vehicularNetworkEnv(dm_env.Environment):
         elif len(reward_history_at_now) > 1:
             min_reward_history_at_now = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
             max_reward_history_at_now = vehicularNetworkEnv.get_max_reward_at_now(int(self._time_slots.now()))
-            edge_reward = (baseline_reward - min_reward_history_at_now) / (max_reward_history_at_now - min_reward_history_at_now)
+            if (max_reward_history_at_now - min_reward_history_at_now) == 0:
+                edge_reward = baseline_reward - min_reward_history_at_now
+            else:
+                edge_reward = (baseline_reward - min_reward_history_at_now) / (max_reward_history_at_now - min_reward_history_at_now)
         else:
             raise ValueError("len(reward_history_at_now) = {}".format(len(reward_history_at_now)))
         self._reward[-2] = edge_reward
@@ -292,12 +303,20 @@ class vehicularNetworkEnv(dm_env.Environment):
 
         # myapp.debug(f"\ninformation_objects_ordered_by_views:\n{self.string_of_information_objects_ordered_by_views(information_objects_ordered_by_views)}")
         
+        observation = self._observation()
+        vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
+            vehicle_number=self._config.vehicle_number,
+            information_number=self._config.information_number,
+            sensed_information_number=self._config.sensed_information_number,
+            vehicle_observation_size=self._vehicle_observation_size,
+            observation=observation,
+        )
         # check for termination
         if self._time_slots.is_end():
             self._reset_next_step = True
-            return dm_env.termination(observation=self._observation(), reward=self._reward)
+            return Environments.termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
         self._time_slots.add_time()
-        return dm_env.transition(observation=self._observation(), reward=self._reward)
+        return Environments.transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
 
     def transform_action_array_to_actions(self, action: np.ndarray) -> Tuple[int, List[List[int]], List[vehicleAction], edgeAction]:
         """Transform the action array to the actions of vehicles and the edge node.
@@ -389,11 +408,6 @@ class vehicularNetworkEnv(dm_env.Environment):
             arrival_moments = sensing_and_queuing.get_arrival_moments()
             updating_moments = sensing_and_queuing.get_updating_moments()
             queuing_times = sensing_and_queuing.get_queuing_times()
-            # myapp.debug("sensed_information_type: {}".format(sensed_information_type))
-            # myapp.debug("arrival_intervals: {}".format(arrival_intervals))
-            # myapp.debug("arrival_moments: {}".format(arrival_moments))
-            # myapp.debug("updating_moments: {}".format(updating_moments))
-            # myapp.debug("queuing_times: {}".format(queuing_times))
             
             v2i_transmission = v2iTransmission(
                 vehicle=self._vehicle_list.get_vehicle(i),
@@ -477,7 +491,6 @@ class vehicularNetworkEnv(dm_env.Environment):
             timeliness = sum(timeliness_of_vehicles)
             timeliness_views.append(timeliness)
             self._timeliness_views_history.append(timeliness)
-        # myapp.debug(f"timeliness_views: {timeliness_views}")
 
         """Compute the consistency of views"""
         consistency_views = []
@@ -488,7 +501,6 @@ class vehicularNetworkEnv(dm_env.Environment):
             consistency = max(updating_moments_of_informations) - min(updating_moments_of_informations)
             consistency_views.append(consistency)
             self._consistency_views_history.append(consistency)
-        # myapp.debug(f"consistency_views: {consistency_views}")
 
         """Compute the redundancy of views"""
         redundancy_views = []
@@ -504,7 +516,6 @@ class vehicularNetworkEnv(dm_env.Environment):
                     redundancy += sum(redundancy_list[i]) - 1
             redundancy_views.append(redundancy)
             self._redundancy_views_history.append(redundancy)
-        # myapp.debug(f"redundancy_views: {redundancy_views}")
 
         """Compute the cost of view"""
         cost_views = []
@@ -527,7 +538,6 @@ class vehicularNetworkEnv(dm_env.Environment):
             cost = sum(cost_of_vehicles)
             cost_views.append(cost)
             self._cost_views_history.append(cost)
-        # myapp.debug(f"cost_views: {cost_views}")
 
         """Normalize the timeliness, consistency, redundancy, and cost of views"""
         timeliness_views_normalized = []
@@ -599,6 +609,17 @@ class vehicularNetworkEnv(dm_env.Environment):
             minimum=np.zeros((self._vehicle_observation_size,)),
             maximum=np.ones((self._vehicle_observation_size,)),
             name='vehicle_observations'
+        )
+    
+    """Define the observation spaces of vehicles."""
+    def vehicle_all_observation_spec(self) -> specs.BoundedArray:
+        """Define and return the observation space."""
+        return specs.BoundedArray(
+            shape=(self._config.vehicle_number * self._vehicle_observation_size,),
+            dtype=float,
+            minimum=np.zeros((self._config.vehicle_number * self._vehicle_observation_size,)),
+            maximum=np.ones((self._config.vehicle_number * self._vehicle_observation_size,)),
+            name='vehicle_all_observations'
         )
 
     """Define the action spaces of vehicle."""
@@ -749,33 +770,33 @@ class vehicularNetworkEnv(dm_env.Environment):
         information_number: int, 
         sensed_information_number: int, 
         vehicle_observation_size: int, 
-        observation: np.ndarray) -> List[np.ndarray]:
+        observation: np.ndarray,
+        is_output_two_dimension: bool = True,    
+    ) -> np.ndarray:
         """Return the observations of the environment at each vehicle.
         vehicle_observation_size: int = 1 + 1 + 1 + self._config.sensed_information_number + self._config.sensed_information_number + \
             self._config.information_number + self._config.information_number 
             # now_time_slot + vehicle_index + distance + information_canbe_sensed + sensing_cost_of_information + \
             # information_in_edge + information_requried
         """
-        vehicle_observations = []
-        for _ in range(vehicle_number):
-            vehicle_observations.append(np.zeros((vehicle_observation_size,)))
+        vehicle_observations = np.zeros(shape=(vehicle_number, vehicle_observation_size))
         
         index = 0
         observation_index = 0
         # now_time_slot
         for _ in range(vehicle_number):
-            vehicle_observations[_][index] = observation[observation_index]
+            vehicle_observations[_ , index] = observation[observation_index]
         index += 1
         observation_index += 1
 
         # vehicle_index
         for _ in range(vehicle_number):
-            vehicle_observations[_][index] = float(_ / vehicle_number)
+            vehicle_observations[_ , index] = float(_ / vehicle_number)
         index += 1
 
         # vehicle distances
         for _ in range(vehicle_number):
-            vehicle_observations[_][index] = observation[observation_index]
+            vehicle_observations[_ , index] = observation[observation_index]
             observation_index += 1
         index += 1
 
@@ -783,7 +804,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         for _ in range(vehicle_number):
             origin_index = index
             for __ in range(sensed_information_number):
-                vehicle_observations[_][origin_index] = observation[observation_index]
+                vehicle_observations[_ , origin_index] = observation[observation_index]
                 observation_index += 1
                 origin_index += 1
         index = origin_index
@@ -792,7 +813,7 @@ class vehicularNetworkEnv(dm_env.Environment):
         for _ in range(vehicle_number):
             origin_index = index
             for __ in range(sensed_information_number):
-                vehicle_observations[_][origin_index] = observation[observation_index]
+                vehicle_observations[_ , origin_index] = observation[observation_index]
                 observation_index += 1
                 origin_index += 1
         index = origin_index
@@ -800,16 +821,30 @@ class vehicularNetworkEnv(dm_env.Environment):
         # information_in_edge
         for _ in range(information_number):
             for __ in range(vehicle_number):
-                vehicle_observations[__][index] = observation[observation_index]
+                vehicle_observations[__ , index] = observation[observation_index]
             observation_index += 1
             index += 1
         
         # information_requried
         for _ in range(information_number):
             for __ in range(vehicle_number):
-                vehicle_observations[__][index] = observation[observation_index]
+                vehicle_observations[__ , index] = observation[observation_index]
             observation_index += 1
             index += 1
+
+        """flatten the output to fit the learning, i.e., transitions.vehicle_observation in sample.data
+        should be M * [vehicle_number * vehicle_observation_size]
+        Code is:
+            new_vehicle_observations = np.zeros(shape=(vehicle_number*vehicle_observation_size,))
+            index = 0
+            for _ in range(vehicle_number):
+                for __ in range(vehicle_observation_size):
+                    new_vehicle_observations[index] = vehicle_observations[_ , __]
+                    index += 1
+            return new_vehicle_observations
+        """
+        if not is_output_two_dimension:
+            return vehicle_observations.flatten()
 
         return vehicle_observations
 

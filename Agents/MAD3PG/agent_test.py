@@ -2,7 +2,7 @@
 import sys
 sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
 
-import acme
+from Agents.MAD3PG.environment_loop import EnvironmentLoop
 from Environments import specs
 from acme.utils import counting
 from Agents.MAD3PG.agent import D3PGConfig, D3PGAgent
@@ -41,7 +41,7 @@ class D3PGTest(absltest.TestCase):
 
         # Try running the environment loop. We have no assertions here because all
         # we care about is that the agent runs without raising any errors.
-        loop = acme.EnvironmentLoop(env, agent, counter=counter)
+        loop = EnvironmentLoop(env, agent, counter=counter)
         loop.run(num_episodes=2)
 
 

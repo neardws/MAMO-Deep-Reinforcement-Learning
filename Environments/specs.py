@@ -20,6 +20,7 @@ class EnvironmentSpec(NamedTuple):
   """Full specification of the domains used by a given environment."""
   observations: NestedSpec
   vehicle_observations: NestedSpec
+  vehicle_all_observations: NestedSpec
   edge_observations: NestedSpec
   actions: NestedSpec
   vehicle_actions: NestedSpec
@@ -35,6 +36,7 @@ def make_environment_spec(environment: vehicularNetworkEnv) -> EnvironmentSpec:
   return EnvironmentSpec(
       observations=environment.observation_spec(),
       vehicle_observations=environment.vehicle_observation_spec(),
+      vehicle_all_observations=environment.vehicle_all_observation_spec(),
       edge_observations=environment.edge_observation_spec(),
       actions=environment.action_spec(),
       vehicle_actions=environment.vehicle_action_spec(),
