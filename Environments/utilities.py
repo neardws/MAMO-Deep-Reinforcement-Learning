@@ -442,6 +442,7 @@ class v2iTransmission(object):
         second_moment_channel_fading_gain: float,
         path_loss_exponent: int,
         information_list: informationList,
+        max_transmission_time: float = 300,
     ) -> None:
         self._vehicle_index = vehicle.get_vehicle_index()
         self._vehicle_trajectory = vehicle.get_vehicle_trajectory()
@@ -462,7 +463,7 @@ class v2iTransmission(object):
         self._mean_channel_fading_gain = mean_channel_fading_gain
         self._second_moment_channel_fading_gain = second_moment_channel_fading_gain
         self._path_loss_exponent = path_loss_exponent
-
+        self._max_transmission_time = max_transmission_time
         self._transmission_times = self.compute_transmission_times()
 
     def get_transmission_times(self) -> np.ndarray:
@@ -494,7 +495,10 @@ class v2iTransmission(object):
                 )
                 tranmission_rate = compute_transmission_rate(
                     SNR, self._bandwdith_allocation[self._vehicle_index])
-                transmission_times[i] = self._information_list.get_information_siez_by_type(self._sensed_information_type[i]) / tranmission_rate
+                if tranmission_rate != 0:
+                    transmission_times[i] = self._information_list.get_information_siez_by_type(self._sensed_information_type[i]) / tranmission_rate
+                else:
+                    transmission_times[i] = self._max_transmission_time
         return transmission_times
 
 

@@ -104,16 +104,8 @@ class EnvironmentLoop(base.Worker):
             # Generate an action from the agent's policy and step the environment.
             action = self._actor.select_action(timestep.observation)
             timestep = self._environment.step(action)
-            vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
-                vehicle_number=self._environment._config.vehicle_number,
-                information_number=self._environment._config.information_number,
-                sensed_information_number=self._environment._config.sensed_information_number,
-                vehicle_observation_size=self._environment._vehicle_observation_size,
-                observation=timestep.observation,
-                is_output_two_dimension=False,
-            )
             # Have the agent observe the timestep and let the actor update itself.
-            self._actor.observe(action=action, next_timestep=timestep, extras=vehicle_observation)
+            self._actor.observe(action=action, next_timestep=timestep)
             for observer in self._observers:
                 # One environment step was completed. Observe the current state of the
                 # environment, the current timestep and the action.

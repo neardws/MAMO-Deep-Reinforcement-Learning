@@ -218,6 +218,7 @@ class vehicularNetworkEnv(Environments.Environment):
             sensed_information_number=self._config.sensed_information_number,
             vehicle_observation_size=self._vehicle_observation_size,
             observation=observation,
+            is_output_two_dimension=False,
         )
         return Environments.restart(observation=self._observation(), vehicle_observation=vehicle_observation)
 
@@ -232,7 +233,7 @@ class vehicularNetworkEnv(Environments.Environment):
         
         views_required_number, information_type_required_by_views_at_now, vehicle_actions, edge_action = \
             self.transform_action_array_to_actions(action)
-        myapp.debug(f"\ntimestep:\n{self._time_slots.now()}")
+        # myapp.dubug(f"\ntimestep:\n{self._time_slots.now()}")
         # myapp.debug(f"\naction:\n{action}")
         # myapp.debug(f"\nviews_required_number:\n{views_required_number}")
         # myapp.debug(f"\ninformation_type_required_by_views_at_now:\n{information_type_required_by_views_at_now}")
@@ -252,7 +253,7 @@ class vehicularNetworkEnv(Environments.Environment):
             information_objects_ordered_by_views=information_objects_ordered_by_views,
             vehicle_actions=vehicle_actions,
         )
-        myapp.debug(f"\nbaseline_reward:\n{baseline_reward}")
+        # myapp.dubug(f"\nbaseline_reward:\n{baseline_reward}")
 
         self._reward[-1] = baseline_reward
         for i in range(self._config.vehicle_number):
@@ -270,7 +271,7 @@ class vehicularNetworkEnv(Environments.Environment):
             )
             self._reward[i] = vehicle_reward
         reward_history_at_now = vehicularNetworkEnv.get_reward_history_at_now(int(self._time_slots.now()))
-        myapp.debug(f"\nreward_history_at_now:\n{reward_history_at_now}")
+        # myapp.dubug(f"\nreward_history_at_now:\n{reward_history_at_now}")
         if len(reward_history_at_now) == 0:
             edge_reward = baseline_reward
         elif len(reward_history_at_now) == 1:
@@ -287,7 +288,7 @@ class vehicularNetworkEnv(Environments.Environment):
             raise ValueError("len(reward_history_at_now) = {}".format(len(reward_history_at_now)))
         self._reward[-2] = edge_reward
 
-        myapp.debug(f"\nreward:\n{self._reward}")
+        # myapp.dubug(f"\nreward:\n{self._reward}")
 
         """Update the information in the edge node."""
         information_objects_ordered_by_views = self.compute_information_objects(
@@ -310,6 +311,7 @@ class vehicularNetworkEnv(Environments.Environment):
             sensed_information_number=self._config.sensed_information_number,
             vehicle_observation_size=self._vehicle_observation_size,
             observation=observation,
+            is_output_two_dimension=False,
         )
         # check for termination
         if self._time_slots.is_end():
@@ -489,8 +491,9 @@ class vehicularNetworkEnv(Environments.Environment):
                 else:
                     timeliness_of_vehicles.append(max(values))
             timeliness = sum(timeliness_of_vehicles)
-            timeliness_views.append(timeliness)
-            self._timeliness_views_history.append(timeliness)
+            if not np.isinf(timeliness) and not np.isnan(timeliness):
+                timeliness_views.append(timeliness)
+                self._timeliness_views_history.append(timeliness)
 
         """Compute the consistency of views"""
         consistency_views = []
@@ -499,8 +502,9 @@ class vehicularNetworkEnv(Environments.Environment):
             for infor in information_objects:
                 updating_moments_of_informations.append(infor.get_updating_moment())
             consistency = max(updating_moments_of_informations) - min(updating_moments_of_informations)
-            consistency_views.append(consistency)
-            self._consistency_views_history.append(consistency)
+            if not np.isinf(consistency) and not np.isnan(consistency):
+                consistency_views.append(consistency)
+                self._consistency_views_history.append(consistency)
 
         """Compute the redundancy of views"""
         redundancy_views = []
@@ -514,8 +518,9 @@ class vehicularNetworkEnv(Environments.Environment):
             for i in range(self._config.information_number):
                 if sum(redundancy_list[i]) > 1:
                     redundancy += sum(redundancy_list[i]) - 1
-            redundancy_views.append(redundancy)
-            self._redundancy_views_history.append(redundancy)
+            if not np.isinf(redundancy) and not np.isnan(redundancy):
+                redundancy_views.append(redundancy)
+                self._redundancy_views_history.append(redundancy)
 
         """Compute the cost of view"""
         cost_views = []
@@ -536,8 +541,9 @@ class vehicularNetworkEnv(Environments.Environment):
                 else:
                     cost_of_vehicles.append(sum(values))
             cost = sum(cost_of_vehicles)
-            cost_views.append(cost)
-            self._cost_views_history.append(cost)
+            if not np.isinf(cost) and not np.isnan(cost):
+                cost_views.append(cost)
+                self._cost_views_history.append(cost)
 
         """Normalize the timeliness, consistency, redundancy, and cost of views"""
         timeliness_views_normalized = []
@@ -546,28 +552,56 @@ class vehicularNetworkEnv(Environments.Environment):
         cost_views_normalized = []
 
         for i in range(len(timeliness_views)):
-            if (max(self._timeliness_views_history) - min(self._timeliness_views_history)) != 0:
+            if (max(self._timeliness_views_history) - min(self._timeliness_views_history)) != 0 and \
+                not np.isnan(timeliness_views[i] - min(self._timeliness_views_history)) / (max(self._timeliness_views_history) - min(self._timeliness_views_history)):
+                # myapp.dubug("(timeliness_views[i] - min(self._timeliness_views_history)) / (max(self._timeliness_views_history) - min(self._timeliness_views_history)):")
+                # myapp.dubug((timeliness_views[i] - min(self._timeliness_views_history)) / (max(self._timeliness_views_history) - min(self._timeliness_views_history)))
+                # myapp.dubug(timeliness_views[i])
+                # myapp.dubug(min(self._timeliness_views_history))
+                # myapp.dubug(max(self._timeliness_views_history))
+                # myapp.dubug("\n")
                 timeliness_views_normalized.append(
                     (timeliness_views[i] - min(self._timeliness_views_history)) / (max(self._timeliness_views_history) - min(self._timeliness_views_history))
                 )
             else:
                 timeliness_views_normalized.append(-1)
             
-            if (max(self._consistency_views_history) - min(self._consistency_views_history)) != 0:
+            if (max(self._consistency_views_history) - min(self._consistency_views_history)) != 0 and \
+                not np.isnan(consistency_views[i] - min(self._consistency_views_history)) / (max(self._consistency_views_history) - min(self._consistency_views_history)):
+                # myapp.dubug("(consistency_views[i] - min(self._consistency_views_history)) / (max(self._consistency_views_history) - min(self._consistency_views_history)):")
+                # myapp.dubug((consistency_views[i] - min(self._consistency_views_history)) / (max(self._consistency_views_history) - min(self._consistency_views_history)))
+                # myapp.dubug(consistency_views[i])
+                # myapp.dubug(min(self._consistency_views_history))
+                # myapp.dubug(max(self._consistency_views_history))
+                # myapp.dubug("\n")
                 consistency_views_normalized.append(
                     (consistency_views[i] - min(self._consistency_views_history)) / (max(self._consistency_views_history) - min(self._consistency_views_history))
                 )
             else:
                 consistency_views_normalized.append(-1)
             
-            if (max(self._redundancy_views_history) - min(self._redundancy_views_history)) != 0:
+            if (max(self._redundancy_views_history) - min(self._redundancy_views_history)) != 0 and \
+                not np.isnan((redundancy_views[i] - min(self._redundancy_views_history)) / (max(self._redundancy_views_history) - min(self._redundancy_views_history))):
+                # myapp.dubug("(redundancy_views[i] - min(self._redundancy_views_history)) / (max(self._redundancy_views_history) - min(self._redundancy_views_history)):")
+                # myapp.dubug((redundancy_views[i] - min(self._redundancy_views_history)) / (max(self._redundancy_views_history) - min(self._redundancy_views_history)))
+                # myapp.dubug(redundancy_views[i])
+                # myapp.dubug(min(self._redundancy_views_history))
+                # myapp.dubug(max(self._redundancy_views_history))
+                # myapp.dubug("\n")
                 redundancy_views_normalized.append(
                     (redundancy_views[i] - min(self._redundancy_views_history)) / (max(self._redundancy_views_history) - min(self._redundancy_views_history))
                 )
             else:
                 redundancy_views_normalized.append(-1)
 
-            if (max(self._cost_views_history) - min(self._cost_views_history)) != 0:
+            if (max(self._cost_views_history) - min(self._cost_views_history)) != 0 and \
+                not np.isnan(cost_views[i] - min(self._cost_views_history)) / (max(self._cost_views_history) - min(self._cost_views_history)):
+                # myapp.dubug("(cost_views[i] - min(self._cost_views_history)) / (max(self._cost_views_history) - min(self._cost_views_history)):")
+                # myapp.dubug((cost_views[i] - min(self._cost_views_history)) / (max(self._cost_views_history) - min(self._cost_views_history)))
+                # myapp.dubug(cost_views[i])
+                # myapp.dubug(min(self._cost_views_history))
+                # myapp.dubug(max(self._cost_views_history))
+                # myapp.dubug("\n")
                 cost_views_normalized.append(
                     (cost_views[i] - min(self._cost_views_history)) / (max(self._cost_views_history) - min(self._cost_views_history))
                 )

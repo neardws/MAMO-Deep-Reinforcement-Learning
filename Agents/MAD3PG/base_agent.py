@@ -57,9 +57,9 @@ class Agent(base.Actor, base.VariableSource):
     def observe_first(self, timestep: dm_env.TimeStep):
         self._actor.observe_first(timestep)
 
-    def observe(self, action: types.NestedArray, next_timestep: dm_env.TimeStep, extras: types.NestedArray):
+    def observe(self, action: types.NestedArray, next_timestep: dm_env.TimeStep):
         self._num_observations += 1
-        self._actor.observe(action, next_timestep, extras)
+        self._actor.observe(action, next_timestep)
 
     def update(self):
         num_steps = _calculate_num_learner_steps(

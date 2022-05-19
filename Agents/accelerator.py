@@ -95,9 +95,14 @@ def average_gradients_across_replicas(replica_context, gradients):
     # Nones occur when you call tape.gradient(loss, variables) with some
     # variables that don't affect the loss.
     # See: https://github.com/tensorflow/tensorflow/issues/783
+    # print("*" * 32)
+    # print("gradients")
+    # print(gradients)
     gradients_without_nones = [g for g in gradients if g is not None]
     original_indices = [i for i, g in enumerate(gradients) if g is not None]
-
+    # print("*" * 32)
+    # print("gradients_without_nones")
+    # print(gradients_without_nones)
     results_without_nones = replica_context.all_reduce('mean',
                                                         gradients_without_nones)
     results = [None] * len(gradients)
@@ -108,4 +113,4 @@ def average_gradients_across_replicas(replica_context, gradients):
 
 
 if __name__ == '__main__':
-    get_first_available_accelerator_type()
+    print(get_first_available_accelerator_type())

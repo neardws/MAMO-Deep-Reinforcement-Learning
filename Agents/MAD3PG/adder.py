@@ -8,7 +8,7 @@ import copy
 from typing import Optional, Tuple
 from Agents.MAD3PG import types
 from Environments import specs
-from acme.adders.reverb import base
+from Agents.MAD3PG import reverb_adder
 from acme.adders.reverb import utils
 from acme.utils import tree_utils
 
@@ -17,7 +17,7 @@ import reverb
 import tree
 
 
-class NStepTransitionAdder(base.ReverbAdder):
+class NStepTransitionAdder(reverb_adder.ReverbAdder):
     """An N-step transition adder.
 
     This will buffer a sequence of N timesteps in order to form a single N-step
@@ -74,7 +74,7 @@ class NStepTransitionAdder(base.ReverbAdder):
         n_step: int,
         discount: float,
         *,
-        priority_fns: Optional[base.PriorityFnMapping] = None,
+        priority_fns: Optional[reverb_adder.PriorityFnMapping] = None,
         max_in_flight_items: int = 5,
     ):
         """Creates an N-step transition adder.
@@ -95,10 +95,10 @@ class NStepTransitionAdder(base.ReverbAdder):
         Raises:
         ValueError: If n_step is less than 1.
         """
-        # Makes the additional discount a float32, which means that it will be
+        # Makes the additional discount a float, which means that it will be
         # upcast if rewards/discounts are float64 and left alone otherwise.
         self.n_step = n_step
-        self._discount = tree.map_structure(np.float32, discount)
+        self._discount = tree.map_structure(np.float, discount)
         self._first_idx = 0
         self._last_idx = 0
 
@@ -278,7 +278,7 @@ class NStepTransitionAdder(base.ReverbAdder):
             environment_spec.vehicle_all_observations,  # vehicle_next_observations
             extras_spec)
 
-        return tree.map_structure_with_path(base.spec_like_to_tensor_spec,
+        return tree.map_structure_with_path(reverb_adder.spec_like_to_tensor_spec,
                                             transition_spec)
 
 
