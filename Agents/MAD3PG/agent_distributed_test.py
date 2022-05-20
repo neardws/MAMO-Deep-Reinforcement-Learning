@@ -1,19 +1,22 @@
-"""Tests for the D3PG agent."""
+
+"""Integration test for the distributed agent."""
 import sys
 sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
 
-from Agents.MAD3PG.environment_loop import EnvironmentLoop
-from acme.utils import counting
-from Agents.MAD3PG.agent import D3PGConfig, D3PGAgent
-from Environments.environment import vehicularNetworkEnv, make_environment_spec
-from Test.environmentConfig_test import vehicularNetworkEnvConfig
+import acme
+import launchpad as lp
 from absl.testing import absltest
+from Environments.environment import vehicularNetworkEnv, make_environment_spec
+from Agents.MAD3PG.networks import make_default_D3PGNetworks
+from Agents.MAD3PG.agent import D3PGConfig, MultiAgentDistributedDDPG
+from Test.environmentConfig_test import vehicularNetworkEnvConfig
 from Agents.MAD3PG.networks import make_default_D3PGNetworks
 
-class D3PGTest(absltest.TestCase):
+class DistributedAgentTest(absltest.TestCase):
+    """Simple integration/smoke test for the distributed agent."""
 
-    def test_d3pg(self):
-        # Create a environment to test with.
+    def test_control_suite(self):
+        """Tests that the agent can run on the control suite without crashing."""
 
         env_config = vehicularNetworkEnvConfig()
         env_config.vehicle_list_seeds += [i for i in range(env_config.vehicle_number)]
@@ -30,18 +33,29 @@ class D3PGTest(absltest.TestCase):
         )
 
         agent_config = D3PGConfig(
-            batch_size=10, samples_per_insert=2, min_replay_size=10)
-        counter = counting.Counter()
-        agent = D3PGAgent(
+            batch_size=32, 
+            min_replay_size=32, 
+            max_replay_size=1000,
+        )
+
+        agent = MultiAgentDistributedDDPG(
             config=agent_config,
             environment=env,
             networks=networks,
+            num_actors=2,
         )
 
-        # Try running the environment loop. We have no assertions here because all
-        # we care about is that the agent runs without raising any errors.
-        loop = EnvironmentLoop(env, agent, counter=counter)
-        loop.run(num_episodes=2)
+        program = agent.build()
+
+        (learner_node,) = program.groups['learner']
+        learner_node.disable_run()
+
+        lp.launch(program, launch_type='test_mt')
+
+        learner: acme.Learner = learner_node.create_handle().dereference()
+
+        for _ in range(5):
+            learner.step()
 
 
 if __name__ == '__main__':

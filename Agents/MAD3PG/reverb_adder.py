@@ -1,18 +1,17 @@
 """Adders that use Reverb (github.com/deepmind/reverb) as a backend."""
 
 import abc
+import imp
 import time
 from typing import Callable, Iterable, Mapping, NamedTuple, Optional, Sized, Union, Tuple
-
 from absl import logging
-from Environments import specs
 from acme import types
 from Agents.MAD3PG import base_adder
-import Environments
 import numpy as np
 import reverb
 import tensorflow as tf
 import tree
+from dm_env import specs
 
 DEFAULT_PRIORITY_TABLE = 'priority_table'
 _MIN_WRITER_LIFESPAN_SECONDS = 60
@@ -51,7 +50,7 @@ PriorityFn = Callable[['PriorityFnInput'], float]
 PriorityFnMapping = Mapping[str, Optional[PriorityFn]]
 
 
-def spec_like_to_tensor_spec(paths: Iterable[str], spec: specs.Array):
+def spec_like_to_tensor_spec(paths: Iterable[str], spec):
     return tf.TensorSpec.from_spec(spec, name='/'.join(str(p) for p in paths))
 
 
@@ -149,7 +148,7 @@ class ReverbAdder(base_adder.Adder):
             self.__writer = None
         self._add_first_called = False
 
-    def add_first(self, timestep: Environments.TimeStep):
+    def add_first(self, timestep):
         """Record the first observation of a trajectory."""
         if not timestep.first():
             raise ValueError('adder.add_first with an initial timestep (i.e. one for '
@@ -165,7 +164,7 @@ class ReverbAdder(base_adder.Adder):
 
     def add(self,
             action: types.NestedArray,
-            next_timestep: Environments.TimeStep,
+            next_timestep,
             extras: types.NestedArray = ()):
         """Record an action and the following timestep."""
 
@@ -204,7 +203,7 @@ class ReverbAdder(base_adder.Adder):
             self.reset()
 
     @classmethod
-    def signature(cls, environment_spec: specs.EnvironmentSpec,
+    def signature(cls, environment_spec,
                     extras_spec: types.NestedSpec = ()):
         """This is a helper method for generating signatures for Reverb tables.
 
@@ -223,13 +222,14 @@ class ReverbAdder(base_adder.Adder):
         Returns:
         A `Step` whose leaf nodes are `tf.TensorSpec` objects.
         """
+        from Environments.environment import Array
         spec_step = Step(
             observation=environment_spec.observations,
             vehicle_observation=environment_spec.vehicle_all_observations,
             action=environment_spec.actions,
             reward=environment_spec.rewards,
             discount=environment_spec.discounts,
-            start_of_episode=specs.Array(shape=(), dtype=bool),
+            start_of_episode=Array(shape=(), dtype=bool),
             extras=extras_spec)
         return tree.map_structure_with_path(spec_like_to_tensor_spec, spec_step)
 

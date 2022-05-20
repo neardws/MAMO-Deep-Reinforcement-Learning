@@ -1,18 +1,18 @@
-import sys
-sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
 
 """Vehicular Network Environments."""
-import Environments
+
 from dm_env import specs
+from acme.types import NestedSpec
 import numpy as np
 from Environments.dataStruct import applicationList, edge, edgeAction, informationList, informationPacket, informationRequirements, location, timeSlots, vehicleAction, vehicleList, viewList  
-from typing import List, Tuple
+from typing import List, Tuple, NamedTuple
+from Environments._environment import baseEnvironment, TimeStep, restart, termination, transition
 import Environments.environmentConfig as env_config
 from Environments.utilities import sensingAndQueuing, v2iTransmission
 from Log.logger import myapp
-import tensorflow as tf
 
-class vehicularNetworkEnv(Environments.Environment):
+
+class vehicularNetworkEnv(baseEnvironment):
     """Vehicular Network Environment built on the dm_env framework."""
     reward_history: List[List[float]] = None
 
@@ -189,7 +189,7 @@ class vehicularNetworkEnv(Environments.Environment):
             reward_size, vehicle_critic_network_action_size, edge_critic_network_action_size
 
 
-    def reset(self) -> Environments.TimeStep:
+    def reset(self) -> TimeStep:
         """Resets the state of the environment and returns an initial observation.
         Returns: observation (object): the initial observation of the
             space.
@@ -220,9 +220,9 @@ class vehicularNetworkEnv(Environments.Environment):
             observation=observation,
             is_output_two_dimension=False,
         )
-        return Environments.restart(observation=self._observation(), vehicle_observation=vehicle_observation)
+        return restart(observation=self._observation(), vehicle_observation=vehicle_observation)
 
-    def step(self, action: np.ndarray) -> Environments.TimeStep:
+    def step(self, action: np.ndarray) -> TimeStep:
         """Run one timestep of the environment's dynamics. When end of
         episode is reached, you are responsible for calling `reset()`
         to reset this environment's state.
@@ -316,9 +316,9 @@ class vehicularNetworkEnv(Environments.Environment):
         # check for termination
         if self._time_slots.is_end():
             self._reset_next_step = True
-            return Environments.termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
+            return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
         self._time_slots.add_time()
-        return Environments.transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
+        return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
 
     def transform_action_array_to_actions(self, action: np.ndarray) -> Tuple[int, List[List[int]], List[vehicleAction], edgeAction]:
         """Transform the action array to the actions of vehicles and the edge node.
@@ -896,3 +896,40 @@ class vehicularNetworkEnv(Environments.Environment):
                 string += str(information_objects_ordered_by_views[_][__]) + " "
             string += "\n"
         return string
+
+
+
+Array = specs.Array
+BoundedArray = specs.BoundedArray
+DiscreteArray = specs.DiscreteArray
+
+
+class EnvironmentSpec(NamedTuple):
+    """Full specification of the domains used by a given environment."""
+    observations: NestedSpec
+    vehicle_observations: NestedSpec
+    vehicle_all_observations: NestedSpec
+    edge_observations: NestedSpec
+    actions: NestedSpec
+    vehicle_actions: NestedSpec
+    edge_actions: NestedSpec
+    rewards: NestedSpec
+    critic_vehicle_actions: NestedSpec
+    critic_edge_actions: NestedSpec
+    discounts: NestedSpec
+
+
+def make_environment_spec(environment: vehicularNetworkEnv) -> EnvironmentSpec:
+    """Returns an `EnvironmentSpec` describing values used by an environment."""
+    return EnvironmentSpec(
+        observations=environment.observation_spec(),
+        vehicle_observations=environment.vehicle_observation_spec(),
+        vehicle_all_observations=environment.vehicle_all_observation_spec(),
+        edge_observations=environment.edge_observation_spec(),
+        actions=environment.action_spec(),
+        vehicle_actions=environment.vehicle_action_spec(),
+        edge_actions=environment.edge_action_spec(),
+        rewards=environment.reward_spec(),
+        critic_vehicle_actions=environment.vehicle_critic_network_action_spec(),
+        critic_edge_actions=environment.edge_critic_network_action_spec(),
+        discounts=environment.discount_spec())

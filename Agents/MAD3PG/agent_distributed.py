@@ -3,7 +3,6 @@
 import copy
 from typing import Optional
 import acme
-from Environments.environment import vehicularNetworkEnv
 from Agents.MAD3PG.agent import D3PGNetworks, D3PGConfig, D3PGAgent
 from acme.tf import savers as tf2_savers
 from acme.utils import counting
@@ -20,6 +19,8 @@ class MultiAgentDistributedDDPG:
     def __init__(
         self,
         config: D3PGConfig,
+        environment,
+        networks: Optional[D3PGNetworks] = None,
         num_actors: int = 1,
         num_caches: int = 0,
         max_actor_steps: Optional[int] = None,
@@ -39,7 +40,11 @@ class MultiAgentDistributedDDPG:
         self._log_every = log_every
 
         # Create the agent.
-        self._agent = D3PGAgent(self._config)
+        self._agent = D3PGAgent(
+            config=self._config,
+            environment=environment,
+            networks=networks,
+        )
 
     def replay(self):
         """The replay storage."""
@@ -99,7 +104,7 @@ class MultiAgentDistributedDDPG:
         replay: reverb.Client,
         variable_source: acme.VariableSource,
         counter: counting.Counter,
-        environment: Optional[vehicularNetworkEnv] = None,  #  Create the environment to interact with actor.
+        environment: Optional[None] = None,  #  Create the environment to interact with actor.
     ) -> acme.EnvironmentLoop:
         """The actor process."""
 
@@ -144,7 +149,7 @@ class MultiAgentDistributedDDPG:
         variable_source: acme.VariableSource,
         counter: counting.Counter,
         logger: Optional[loggers.Logger] = None,
-        environment: Optional[vehicularNetworkEnv] = None,  #  Create the environment to interact with evaluator.
+        environment: Optional[None] = None,  #  Create the environment to interact with evaluator.
     ):
         """The evaluation process."""
 

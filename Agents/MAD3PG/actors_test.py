@@ -5,8 +5,7 @@ import Agents.MAD3PG.environment_loop as environment_loop
 from absl.testing import absltest
 from Agents.MAD3PG import actors
 from Test.environmentConfig_test import vehicularNetworkEnvConfig
-from Environments.environment import vehicularNetworkEnv
-from Environments import specs
+from Environments.environment import vehicularNetworkEnv, make_environment_spec
 from Agents.MAD3PG.networks import make_policy_network
 
 
@@ -21,7 +20,7 @@ class ActorTest(absltest.TestCase):
 
         env = vehicularNetworkEnv(config)
 
-        env_spec = specs.make_environment_spec(env)
+        env_spec = make_environment_spec(env)
 
         vehicle_policy_network = make_policy_network(env_spec.vehicle_actions)
         edge_policy_network = make_policy_network(env_spec.edge_actions)

@@ -1,9 +1,8 @@
 import sys
 sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
 
-from Environments.environment import vehicularNetworkEnv
+from Environments.environment import vehicularNetworkEnv, make_environment_spec
 from Test.environmentConfig_test import vehicularNetworkEnvConfig
-from Environments import specs
 from absl.testing import absltest
 from acme import environment_loop
 from Agents.RA import actors
@@ -30,7 +29,7 @@ def test_size():
 class ActorTest(absltest.TestCase):
 
     def test_random(self):
-        env_spec = specs.make_environment_spec(env)
+        env_spec = make_environment_spec(env)
 
         actor = actors.RandomActor(env_spec)
         loop = environment_loop.EnvironmentLoop(env, actor)

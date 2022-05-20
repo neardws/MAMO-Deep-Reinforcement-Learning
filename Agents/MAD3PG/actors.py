@@ -11,7 +11,6 @@ import dm_env
 import sonnet as snt
 import tensorflow as tf
 import tensorflow_probability as tfp
-from Environments.environment import vehicularNetworkEnv
 
 tfd = tfp.distributions
 
@@ -87,12 +86,13 @@ class FeedForwardActor(base.Actor):
 
     def _policy(
         self, 
-        vehicle_observations: types.NestedTensor,
-        edge_observation: types.NestedTensor
-    ) -> types.NestedTensor:
+        vehicle_observations: types.NestedArray,
+        edge_observation: types.NestedArray
+    ) -> types.NestedArray:
         action = []
-        for i in range(vehicle_observations.shape[0]):
-            vehicle_action = self.get_vehicle_action(vehicle_observations[i,:])
+        for i in range(len(self._vehicle_number)):
+            vehicle_action = self.get_vehicle_action(
+                vehicle_observations[i * self._vehicle_observation_size: (i+1) * self._vehicle_observation_size])
             action.append(vehicle_action)
 
         edge_action = self.get_edge_action(edge_observation)
@@ -102,17 +102,9 @@ class FeedForwardActor(base.Actor):
         return tf2_utils.to_numpy_squeeze(actions)
 
 
-    def select_action(self, observation: np.ndarray) -> types.NestedArray:
+    def select_action(self, observation: types.NestedArray, vehicle_observations: types.NestedArray) -> types.NestedArray:
         # Pass the observation through the policy network.
-        vehicle_observations: types.NestedTensor = vehicularNetworkEnv.get_vehicle_observations(
-            vehicle_number=self._vehicle_number, 
-            information_number=self._information_number, 
-            sensed_information_number=self._sensed_information_number, 
-            vehicle_observation_size=self._vehicle_observation_size,
-            observation=observation)
-        edge_observation: types.NestedTensor = vehicularNetworkEnv.get_edge_observation(observation=observation)
-
-        action = self._policy(vehicle_observations, edge_observation)
+        action = self._policy(vehicle_observations=vehicle_observations, edge_observation=observation)
         # Return a numpy array with squeezed out batch dimension.
         return action
 

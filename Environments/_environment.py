@@ -68,7 +68,7 @@ class StepType(enum.IntEnum):
         return self is StepType.LAST
 
 
-class Environment(metaclass=abc.ABCMeta):
+class baseEnvironment(metaclass=abc.ABCMeta):
     """Abstract base class for Python RL environments.
 
     Observations and valid actions are described with `Array` specs, defined in

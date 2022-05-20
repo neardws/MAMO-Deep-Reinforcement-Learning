@@ -51,8 +51,8 @@ class Agent(base.Actor, base.VariableSource):
         self._observations_per_step = observations_per_step
         self._num_observations = 0
 
-    def select_action(self, observation: types.NestedArray) -> types.NestedArray:
-        return self._actor.select_action(observation)
+    def select_action(self, observation: types.NestedArray, vehicle_observations: types.NestedArray) -> types.NestedArray:
+        return self._actor.select_action(observation, vehicle_observations)
 
     def observe_first(self, timestep: dm_env.TimeStep):
         self._actor.observe_first(timestep)

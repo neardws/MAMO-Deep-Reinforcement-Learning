@@ -18,14 +18,11 @@
 import operator
 import time
 from typing import Optional, Sequence
-from Agents.MAD3PG.actors import FeedForwardActor
-from Environments.environment import vehicularNetworkEnv
 from Agents.MAD3PG import base
 from acme.utils import counting
 from acme.utils import loggers
 from acme.utils import observers as observers_lib
 from acme.utils import signals
-
 from dm_env import specs
 import numpy as np
 import tree
@@ -57,7 +54,7 @@ class EnvironmentLoop(base.Worker):
 
     def __init__(
         self,
-        environment: vehicularNetworkEnv,
+        environment,
         actor: base.Actor,
         counter: Optional[counting.Counter] = None,
         logger: Optional[loggers.Logger] = None,
@@ -102,7 +99,7 @@ class EnvironmentLoop(base.Worker):
         # Run an episode.
         while not timestep.last():
             # Generate an action from the agent's policy and step the environment.
-            action = self._actor.select_action(timestep.observation)
+            action = self._actor.select_action(timestep.observation, timestep.vehicle_observation)
             timestep = self._environment.step(action)
             # Have the agent observe the timestep and let the actor update itself.
             self._actor.observe(action=action, next_timestep=timestep)

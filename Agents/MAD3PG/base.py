@@ -37,7 +37,7 @@ class Actor(abc.ABC):
     """
 
     @abc.abstractmethod
-    def select_action(self, observation: types.NestedArray) -> types.NestedArray:
+    def select_action(self, observation: types.NestedArray, vehicle_observations: types.NestedArray) -> types.NestedArray:
         """Samples from the policy and returns an action."""
 
     @abc.abstractmethod

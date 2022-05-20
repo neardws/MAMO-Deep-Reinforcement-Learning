@@ -3,7 +3,6 @@
 import abc
 
 from acme import types
-import Environments
 
 
 class Adder(abc.ABC):
@@ -36,7 +35,7 @@ class Adder(abc.ABC):
     """
 
     @abc.abstractmethod
-    def add_first(self, timestep: Environments.TimeStep):
+    def add_first(self, timestep):
         """Defines the interface for an adder's `add_first` method.
 
         We expect this to be called at the beginning of each episode and it will
@@ -50,7 +49,7 @@ class Adder(abc.ABC):
     def add(
         self,
         action: types.NestedArray,
-        next_timestep: Environments.TimeStep,
+        next_timestep,
         extras: types.NestedArray = (),
     ):
         """Defines the adder `add` interface.

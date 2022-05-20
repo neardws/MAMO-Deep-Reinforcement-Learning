@@ -7,7 +7,6 @@ into a single transition, simplifying to a simple transition adder when N=1.
 import copy
 from typing import Optional, Tuple
 from Agents.MAD3PG import types
-from Environments import specs
 from Agents.MAD3PG import reverb_adder
 from acme.adders.reverb import utils
 from acme.utils import tree_utils
@@ -249,7 +248,7 @@ class NStepTransitionAdder(reverb_adder.ReverbAdder):
     # neither of which is done here.
     @classmethod
     def signature(cls,
-                    environment_spec: specs.EnvironmentSpec,
+                    environment_spec,
                     extras_spec: types.NestedSpec = ()):
 
         # This function currently assumes that self._discount is a scalar.
@@ -282,7 +281,7 @@ class NStepTransitionAdder(reverb_adder.ReverbAdder):
                                             transition_spec)
 
 
-def _broadcast_specs(*args: specs.Array) -> specs.Array:
+def _broadcast_specs(*args):
     """Like np.broadcast, but for specs.Array.
 
     Args:
@@ -293,4 +292,5 @@ def _broadcast_specs(*args: specs.Array) -> specs.Array:
     """
     bc_info = np.broadcast(*tuple(a.generate_value() for a in args))
     dtype = np.result_type(*tuple(a.dtype for a in args))
-    return specs.Array(shape=bc_info.shape, dtype=dtype)
+    from Environments.environment import Array
+    return Array(shape=bc_info.shape, dtype=dtype)
