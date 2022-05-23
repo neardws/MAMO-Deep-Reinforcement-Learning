@@ -90,7 +90,7 @@ class FeedForwardActor(base.Actor):
         edge_observation: types.NestedArray
     ) -> types.NestedArray:
         action = []
-        for i in range(len(self._vehicle_number)):
+        for i in range(self._vehicle_number):
             vehicle_action = self.get_vehicle_action(
                 vehicle_observations[i * self._vehicle_observation_size: (i+1) * self._vehicle_observation_size])
             action.append(vehicle_action)

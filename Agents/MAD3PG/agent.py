@@ -1,7 +1,7 @@
 """D3PG agent implementation."""
 import copy
 import dataclasses
-from typing import Iterator, List, Optional, Tuple
+from typing import Callable, Iterator, List, Optional, Tuple, Union, Sequence
 import acme
 from Agents.MAD3PG.environment_loop import EnvironmentLoop
 from acme import adders
@@ -20,11 +20,15 @@ from acme.tf import savers as tf2_savers
 from acme.utils import counting
 from acme.utils import loggers
 from acme.utils import lp_utils
+import tensorflow as tf
 import reverb
 import sonnet as snt
 import launchpad as lp
-from Agents.accelerator import get_first_available_accelerator_type, get_replicator
+import functools
+import dm_env
 from Agents.MAD3PG.networks import make_default_D3PGNetworks
+
+Replicator = Union[snt.distribute.Replicator, snt.distribute.TpuReplicator]
 
 # Valid values of the "accelerator" argument.
 _ACCELERATORS = ('CPU', 'GPU', 'TPU')
@@ -176,6 +180,7 @@ class D3PGAgent(base_agent.Agent):
         self,
         config: D3PGConfig,
         environment,
+        environment_spec,
         networks: Optional[D3PGNetworks] = None,
     ):
         """Initialize the agent.
@@ -197,8 +202,7 @@ class D3PGAgent(base_agent.Agent):
             online_networks = networks
 
         self._environment = environment
-        from Environments.environment import make_environment_spec
-        self._environment_spec = make_environment_spec(self._environment)
+        self._environment_spec = environment_spec
         # Target networks are just a copy of the online networks.
         target_networks = copy.deepcopy(online_networks)
 
@@ -220,10 +224,6 @@ class D3PGAgent(base_agent.Agent):
         actor = self.make_actor(
             vehicle_policy_network=vehicle_policy_network, 
             edge_policy_network=edge_policy_network,
-            vehicle_number=self._environment._config.vehicle_number,
-            information_number=self._environment._config.information_number,
-            sensed_information_number=self._environment._config.sensed_information_number,
-            vehicle_observation_size=self._environment._vehicle_observation_size,
             adder=adder,
         )
         dataset = self.make_dataset_iterator(replay_client=replay_client)
@@ -308,10 +308,6 @@ class D3PGAgent(base_agent.Agent):
         self,
         vehicle_policy_network: snt.Module,
         edge_policy_network: snt.Module,
-        vehicle_number: int,
-        information_number: int,
-        sensed_information_number: int,
-        vehicle_observation_size: int,
         adder: Optional[adders.Adder] = None,
         variable_source: Optional[core.VariableSource] = None,
     ):
@@ -336,10 +332,10 @@ class D3PGAgent(base_agent.Agent):
         return actors.FeedForwardActor(
             vehicle_policy_network=vehicle_policy_network,
             edge_policy_network=edge_policy_network,
-            vehicle_number=vehicle_number,
-            information_number=information_number,
-            sensed_information_number=sensed_information_number,
-            vehicle_observation_size=vehicle_observation_size,
+            vehicle_number=self._environment._config.vehicle_number,
+            information_number=self._environment._config.information_number,
+            sensed_information_number=self._environment._config.sensed_information_number,
+            vehicle_observation_size=self._environment._vehicle_observation_size,
             adder=adder,
             variable_client=variable_client,
         )
@@ -400,7 +396,8 @@ class MultiAgentDistributedDDPG:
     def __init__(
         self,
         config: D3PGConfig,
-        environment,
+        environment_factory: Callable[[bool], dm_env.Environment],
+        environment_spec,
         networks: Optional[D3PGNetworks] = None,
         num_actors: int = 1,
         num_caches: int = 0,
@@ -419,17 +416,20 @@ class MultiAgentDistributedDDPG:
         self._num_caches = num_caches
         self._max_actor_steps = max_actor_steps
         self._log_every = log_every
-
+        self._networks = networks
+        self._environment_spec = environment_spec
+        self._environment_factory = environment_factory
         # Create the agent.
         self._agent = D3PGAgent(
             config=self._config,
-            environment=environment,
-            networks=networks,
+            environment=self._environment_factory(False),
+            environment_spec=self._environment_spec,
+            networks=self._networks,
         )
 
     def replay(self):
         """The replay storage."""
-        return self._agent.make_replay_tables(self._config.environment_spec)
+        return self._agent.make_replay_tables(self._environment_spec)
 
     def counter(self):
         return tf2_savers.CheckpointingRunner(counting.Counter(),
@@ -448,23 +448,16 @@ class MultiAgentDistributedDDPG:
         
         # If we are running on multiple accelerator devices, this replicates
         # weights and updates across devices.
-        replicator = D3PGAgent.get_replicator(self._accelerator)
+        replicator = get_replicator(self._accelerator)
 
         with replicator.scope():
             # Create the networks to optimize (online) and target networks.
-            online_networks = D3PGNetworks(
-                vehicle_policy_network=self._config.vehicle_policy_network,
-                vehicle_critic_network=self._config.vehicle_critic_network,
-                vehicle_observation_network=self._config.vehicle_observation_network,
-                edge_policy_network=self._config.edge_policy_network,
-                edge_critic_network=self._config.edge_critic_network,
-                edge_observation_network=self._config.edge_observation_network,
-            )
+            online_networks = self._networks
             target_networks = copy.deepcopy(online_networks)
 
             # Initialize the networks.
-            online_networks.init(self._config.environment_spec)
-            target_networks.init(self._config.environment_spec)
+            online_networks.init(self._environment_spec)
+            target_networks.init(self._environment_spec)
 
         dataset = self._agent.make_dataset_iterator(replay)
         counter = counting.Counter(counter, 'learner')
@@ -485,31 +478,25 @@ class MultiAgentDistributedDDPG:
         replay: reverb.Client,
         variable_source: acme.VariableSource,
         counter: counting.Counter,
-        environment: Optional[None] = None,  #  Create the environment to interact with actor.
     ) -> EnvironmentLoop:
         """The actor process."""
 
         # Create the behavior policy.        
-        networks = D3PGNetworks(
-            vehicle_policy_network=self._config.vehicle_policy_network,
-            vehicle_critic_network=self._config.vehicle_critic_network,
-            vehicle_observation_network=self._config.vehicle_observation_network,
-            edge_policy_network=self._config.edge_policy_network,
-            edge_critic_network=self._config.edge_critic_network,
-            edge_observation_network=self._config.edge_observation_network,
-        )
-        networks.init(self._config.environment_spec)
+        networks = self._networks
+        networks.init(self._environment_spec)
 
         vehicle_policy_network, edge_policy_network = networks.make_policy(
-            environment_spec=self._config.environment_spec,
+            environment_spec=self._environment_spec,
             sigma=self._config.sigma,
         )
+        
+        # Create the environment
+        environment = self._environment_factory(False)
 
         # Create the agent.
         actor = self._agent.make_actor(
             vehicle_policy_network=vehicle_policy_network,
             edge_policy_network=edge_policy_network,
-            environment=environment,
             adder=self._agent.make_adder(replay),
             variable_source=variable_source,
         )
@@ -530,27 +517,21 @@ class MultiAgentDistributedDDPG:
         variable_source: acme.VariableSource,
         counter: counting.Counter,
         logger: Optional[loggers.Logger] = None,
-        environment: Optional[None] = None,  #  Create the environment to interact with evaluator.
     ):
         """The evaluation process."""
 
         # Create the behavior policy.
-        networks = D3PGNetworks(
-            vehicle_policy_network=self._config.vehicle_policy_network,
-            vehicle_critic_network=self._config.vehicle_critic_network,
-            vehicle_observation_network=self._config.vehicle_observation_network,
-            edge_policy_network=self._config.edge_policy_network,
-            edge_critic_network=self._config.edge_critic_network,
-            edge_observation_network=self._config.edge_observation_network,
-        )
-        networks.init(self._config.environment_spec)
-        vehicle_policy_network, edge_policy_network = networks.make_policy(self._config.environment_spec)
+        networks = self._networks
+        networks.init(self._environment_spec)
+        vehicle_policy_network, edge_policy_network = networks.make_policy(self._environment_spec)
+
+        # Make the environment
+        environment = self._environment_factory(True)
 
         # Create the agent.
         actor = self._agent.make_actor(
             vehicle_policy_network=vehicle_policy_network,
             edge_policy_network=edge_policy_network,
-            environment=environment,
             variable_source=variable_source,
         )
 
@@ -605,3 +586,74 @@ class MultiAgentDistributedDDPG:
                 program.add_node(lp.CourierNode(self.actor, replay, source, counter))
 
         return program
+
+
+def ensure_accelerator(accelerator: str) -> str:
+    """Checks for the existence of the expected accelerator type.
+    Args:
+        accelerator: 'CPU', 'GPU' or 'TPU'.
+    Returns:
+        The validated `accelerator` argument.
+    Raises:
+        RuntimeError: Thrown if the expected accelerator isn't found.
+    """
+    devices = tf.config.get_visible_devices(device_type=accelerator)
+
+    if devices:
+        return accelerator
+    else:
+        error_messages = [f'Couldn\'t find any {accelerator} devices.',
+                        'tf.config.get_visible_devices() returned:']
+        error_messages.extend([str(d) for d in devices])
+        raise RuntimeError('\n'.join(error_messages))
+
+
+def get_first_available_accelerator_type(
+    wishlist: Sequence[str] = ('TPU', 'GPU', 'CPU')) -> str:
+    """Returns the first available accelerator type listed in a wishlist.
+    Args:
+        wishlist: A sequence of elements from {'CPU', 'GPU', 'TPU'}, listed in
+        order of descending preference.
+    Returns:
+        The first available accelerator type from `wishlist`.
+    Raises:
+        RuntimeError: Thrown if no accelerators from the `wishlist` are found.
+    """
+    get_visible_devices = tf.config.get_visible_devices
+
+    for wishlist_device in wishlist:
+        devices = get_visible_devices(device_type=wishlist_device)
+        if devices:
+            return wishlist_device
+
+    available = ', '.join(
+        sorted(frozenset([d.type for d in get_visible_devices()])))
+    raise RuntimeError(
+        'Couldn\'t find any devices from {wishlist}.' +
+        f'Only the following types are available: {available}.')
+
+
+# Only instantiate one replicator per (process, accelerator type), in case
+# a replicator stores state that needs to be carried between its method calls.
+@functools.lru_cache()
+def get_replicator(accelerator: Optional[str]) -> Replicator:
+    """Returns a replicator instance appropriate for the given accelerator.
+    This caches the instance using functools.cache, so that only one replicator
+    is instantiated per process and argument value.
+    Args:
+        accelerator: None, 'TPU', 'GPU', or 'CPU'. If None, the first available
+        accelerator type will be chosen from ('TPU', 'GPU', 'CPU').
+    Returns:
+        A replicator, for replciating weights, datasets, and updates across
+        one or more accelerators.
+    """
+    if accelerator:
+        accelerator = ensure_accelerator(accelerator)
+    else:
+        accelerator = get_first_available_accelerator_type()
+
+    if accelerator == 'TPU':
+        tf.tpu.experimental.initialize_tpu_system()
+        return snt.distribute.TpuReplicator()
+    else:
+        return snt.distribute.Replicator()

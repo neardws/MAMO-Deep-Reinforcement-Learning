@@ -1,7 +1,7 @@
 """D3PG learner implementation."""
 
 import time
-from typing import Dict, Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional, Union, Sequence
 import acme
 from acme.tf import losses
 from acme.tf import networks as acme_nets
@@ -16,7 +16,9 @@ import tensorflow as tf
 import tree
 from Agents.MAD3PG.gradient import GradientTape
 from Agents.MAD3PG import types
-from Agents.accelerator import Replicator, average_gradients_across_replicas, get_first_available_accelerator_type
+
+Replicator = Union[snt.distribute.Replicator, snt.distribute.TpuReplicator]
+
 
 class D3PGLearner(acme.Learner):
     """MAD3PG learner.
@@ -559,3 +561,63 @@ class D3PGLearner(acme.Learner):
 
     def get_variables(self, names: List[str]) -> List[List[np.ndarray]]:
         return [tf2_utils.to_numpy(self._variables[name]) for name in names]
+
+
+def get_first_available_accelerator_type(
+    wishlist: Sequence[str] = ('TPU', 'GPU', 'CPU')) -> str:
+    """Returns the first available accelerator type listed in a wishlist.
+    Args:
+        wishlist: A sequence of elements from {'CPU', 'GPU', 'TPU'}, listed in
+        order of descending preference.
+    Returns:
+        The first available accelerator type from `wishlist`.
+    Raises:
+        RuntimeError: Thrown if no accelerators from the `wishlist` are found.
+    """
+    get_visible_devices = tf.config.get_visible_devices
+
+    for wishlist_device in wishlist:
+        devices = get_visible_devices(device_type=wishlist_device)
+        if devices:
+            return wishlist_device
+
+    available = ', '.join(
+        sorted(frozenset([d.type for d in get_visible_devices()])))
+    raise RuntimeError(
+        'Couldn\'t find any devices from {wishlist}.' +
+        f'Only the following types are available: {available}.')
+
+
+def average_gradients_across_replicas(replica_context, gradients):
+    """Computes the average gradient across replicas.
+    This computes the gradient locally on this device, then copies over the
+    gradients computed on the other replicas, and takes the average across
+    replicas.
+    This is faster than copying the gradients from TPU to CPU, and averaging
+    them on the CPU (which is what we do for the losses/fetches).
+    Args:
+        replica_context: the return value of `tf.distribute.get_replica_context()`.
+        gradients: The output of tape.gradients(loss, variables)
+    Returns:
+        A list of (d_loss/d_varabiable)s.
+    """
+
+    # We must remove any Nones from gradients before passing them to all_reduce.
+    # Nones occur when you call tape.gradient(loss, variables) with some
+    # variables that don't affect the loss.
+    # See: https://github.com/tensorflow/tensorflow/issues/783
+    # print("*" * 32)
+    # print("gradients")
+    # print(gradients)
+    gradients_without_nones = [g for g in gradients if g is not None]
+    original_indices = [i for i, g in enumerate(gradients) if g is not None]
+    # print("*" * 32)
+    # print("gradients_without_nones")
+    # print(gradients_without_nones)
+    results_without_nones = replica_context.all_reduce('mean',
+                                                        gradients_without_nones)
+    results = [None] * len(gradients)
+    for ii, result in zip(original_indices, results_without_nones):
+        results[ii] = result
+
+    return results 

@@ -97,7 +97,7 @@ class NStepTransitionAdder(reverb_adder.ReverbAdder):
         # Makes the additional discount a float, which means that it will be
         # upcast if rewards/discounts are float64 and left alone otherwise.
         self.n_step = n_step
-        self._discount = tree.map_structure(np.float, discount)
+        self._discount = tree.map_structure(float, discount)
         self._first_idx = 0
         self._last_idx = 0
 

@@ -40,7 +40,8 @@ class DistributedAgentTest(absltest.TestCase):
 
         agent = MultiAgentDistributedDDPG(
             config=agent_config,
-            environment=env,
+            environment_factory=lambda x: vehicularNetworkEnv(env_config),
+            environment_spec=spec,
             networks=networks,
             num_actors=2,
         )
@@ -50,7 +51,7 @@ class DistributedAgentTest(absltest.TestCase):
         (learner_node,) = program.groups['learner']
         learner_node.disable_run()
 
-        lp.launch(program, launch_type='test_mt')
+        lp.launch(program, launch_type='test_mt', serialize_py_nodes=False)
 
         learner: acme.Learner = learner_node.create_handle().dereference()
 
