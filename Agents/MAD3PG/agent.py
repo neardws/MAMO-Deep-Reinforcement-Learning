@@ -336,6 +336,8 @@ class D3PGAgent(base_agent.Agent):
             information_number=self._environment._config.information_number,
             sensed_information_number=self._environment._config.sensed_information_number,
             vehicle_observation_size=self._environment._vehicle_observation_size,
+            vehicle_action_size=self._environment._vehicle_action_size,
+            edge_action_size=self._environment._edge_action_size,
             adder=adder,
             variable_client=variable_client,
         )

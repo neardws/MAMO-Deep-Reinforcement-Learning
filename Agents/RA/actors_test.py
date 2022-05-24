@@ -11,11 +11,11 @@ from absl.testing import absltest
 
 def _make_fake_env() -> dm_env.Environment:
     env_spec = specs.EnvironmentSpec(
-        observations=specs.Array(shape=(10, 5), dtype=np.float32),
+        observations=specs.Array(shape=(10, 5), dtype=float),
         actions=specs.DiscreteArray(num_values=3),
-        rewards=specs.Array(shape=(), dtype=np.float32),
+        rewards=specs.Array(shape=(), dtype=float),
         discounts=specs.BoundedArray(
-            shape=(), dtype=np.float32, minimum=0., maximum=1.),
+            shape=(), dtype=float, minimum=0., maximum=1.),
     )
     return fakes.Environment(env_spec, episode_length=10)
 

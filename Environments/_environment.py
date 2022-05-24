@@ -5,8 +5,7 @@ import enum
 from typing import Any, NamedTuple
 from Agents.MAD3PG import types
 from dm_env import specs
-
-
+import numpy as np
 
 class TimeStep(NamedTuple):
     """Returned with every call to `step` and `reset` on an environment.

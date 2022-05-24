@@ -33,6 +33,9 @@ class FeedForwardActor(base.Actor):
         sensed_information_number: int,
         vehicle_observation_size: int,
 
+        vehicle_action_size: int,
+        edge_action_size: int,
+
         adder: Optional[adders.Adder] = None,
         variable_client: Optional[tf2_variable_utils.VariableClient] = None,
     ):
@@ -59,54 +62,44 @@ class FeedForwardActor(base.Actor):
         self._information_number = information_number
         self._sensed_information_number = sensed_information_number
         self._vehicle_observation_size = vehicle_observation_size
+        self._vehicle_action_size = vehicle_action_size
+        self._edge_action_size = edge_action_size
 
-
-    @tf.function
-    def get_vehicle_action(
-        self, 
-        vehicle_observation: types.NestedTensor,
-    ) -> types.NestedArray:
-        # Add a dummy batch dimension and as a side effect convert numpy to TF.
-        vehicle_batched_observation = tf2_utils.add_batch_dim(vehicle_observation)
-        # Compute the policy, conditioned on the observation.
-        vehicle_policy = self._vehicle_policy_network(vehicle_batched_observation)
-        # Sample from the policy if it is stochastic.
-        vehicle_action = vehicle_policy.sample() if isinstance(vehicle_policy, tfd.Distribution) else vehicle_policy
-        return vehicle_action
-
-    @tf.function
-    def get_edge_action(
-        self,
-        edge_observation: types.NestedTensor,
-    ) -> types.NestedTensor:
-        edge_batched_observation = tf2_utils.add_batch_dim(edge_observation)
-        edge_policy = self._edge_policy_network(edge_batched_observation)
-        edge_action = edge_policy.sample() if isinstance(edge_policy, tfd.Distribution) else edge_policy
-        return edge_action
-
+    @tf.function(experimental_relax_shapes=True)
     def _policy(
         self, 
         vehicle_observations: types.NestedArray,
         edge_observation: types.NestedArray
     ) -> types.NestedArray:
-        action = []
-        for i in range(self._vehicle_number):
-            vehicle_action = self.get_vehicle_action(
-                vehicle_observations[i * self._vehicle_observation_size: (i+1) * self._vehicle_observation_size])
-            action.append(vehicle_action)
+        action = tf.zeros(shape=(1, self._vehicle_number * self._vehicle_action_size + self._edge_action_size), dtype=tf.float64)
 
-        edge_action = self.get_edge_action(edge_observation)
-        action.append(edge_action)
-        actions = tf.concat(action, axis=1)
-        # Return a numpy array with squeezed out batch dimension.
-        return tf2_utils.to_numpy_squeeze(actions)
+        for i in tf.data.Dataset.range(self._vehicle_number):
+            vehicle_observation = vehicle_observations[i * self._vehicle_observation_size: (i+1) * self._vehicle_observation_size]
+            # Add a dummy batch dimension and as a side effect convert numpy to TF.
+            vehicle_batched_observation = tf2_utils.add_batch_dim(vehicle_observation)
+            # Compute the policy, conditioned on the observation.
+            vehicle_policy = self._vehicle_policy_network(vehicle_batched_observation)
+            # Sample from the policy if it is stochastic.
+            vehicle_action = vehicle_policy.sample() if isinstance(vehicle_policy, tfd.Distribution) else vehicle_policy
 
+            action = tf.concat(
+                [action[:, :i * self._vehicle_action_size], vehicle_action, action[:, (i+1) * self._vehicle_action_size :]], 
+                axis=1)
+
+            action.set_shape([1, self._vehicle_number * self._vehicle_action_size + self._edge_action_size])
+
+        edge_batched_observation = tf2_utils.add_batch_dim(edge_observation)
+        edge_policy = self._edge_policy_network(edge_batched_observation)
+        edge_action = edge_policy.sample() if isinstance(edge_policy, tfd.Distribution) else edge_policy
+        action = tf.concat([action[:, :self._vehicle_number * self._vehicle_action_size], edge_action], axis=1)
+        action.set_shape([1, self._vehicle_number * self._vehicle_action_size + self._edge_action_size])
+        return action
 
     def select_action(self, observation: types.NestedArray, vehicle_observations: types.NestedArray) -> types.NestedArray:
         # Pass the observation through the policy network.
         action = self._policy(vehicle_observations=vehicle_observations, edge_observation=observation)
         # Return a numpy array with squeezed out batch dimension.
-        return action
+        return tf2_utils.to_numpy_squeeze(action)
 
     def observe_first(self, timestep: dm_env.TimeStep):
         if self._adder:
