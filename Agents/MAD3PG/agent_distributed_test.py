@@ -10,7 +10,6 @@ from Environments.environment import vehicularNetworkEnv, make_environment_spec
 from Agents.MAD3PG.networks import make_default_D3PGNetworks
 from Agents.MAD3PG.agent import D3PGConfig, MultiAgentDistributedDDPG
 from Test.environmentConfig_test import vehicularNetworkEnvConfig
-from Agents.MAD3PG.networks import make_default_D3PGNetworks
 
 class DistributedAgentTest(absltest.TestCase):
     """Simple integration/smoke test for the distributed agent."""

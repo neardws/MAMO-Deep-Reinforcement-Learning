@@ -97,7 +97,9 @@ class FeedForwardActor(base.Actor):
 
     def select_action(self, observation: types.NestedArray, vehicle_observations: types.NestedArray) -> types.NestedArray:
         # Pass the observation through the policy network.
-        action = self._policy(vehicle_observations=vehicle_observations, edge_observation=observation)
+        action = self._policy(
+            vehicle_observations=tf.convert_to_tensor(vehicle_observations, dtype=tf.float64), 
+            edge_observation=tf.convert_to_tensor(observation, dtype=tf.float64))
         # Return a numpy array with squeezed out batch dimension.
         return tf2_utils.to_numpy_squeeze(action)
 

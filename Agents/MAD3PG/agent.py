@@ -403,8 +403,8 @@ class MultiAgentDistributedDDPG:
         networks: Optional[D3PGNetworks] = None,
         num_actors: int = 1,
         num_caches: int = 0,
-        max_actor_steps: Optional[int] = None,
-        log_every: float = 10.0,
+        max_actor_steps: Optional[int] = 5000,
+        log_every: float = 30.0,
     ):
         """Initialize the MAD3PG agent."""
         self._config = config
@@ -435,7 +435,7 @@ class MultiAgentDistributedDDPG:
 
     def counter(self):
         return tf2_savers.CheckpointingRunner(counting.Counter(),
-                                            time_delta_minutes=1,
+                                            time_delta_minutes=30,
                                             subdirectory='counter')
 
     def coordinator(self, counter: counting.Counter):

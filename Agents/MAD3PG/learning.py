@@ -434,16 +434,16 @@ class D3PGLearner(acme.Learner):
         timestamp = time.time()
         elapsed_time = timestamp - self._timestamp if self._timestamp else 0
         self._timestamp = timestamp
-
+        
         # Update our counts and record it.
         counts = self._counter.increment(steps=1, walltime=elapsed_time)
         fetches.update(counts)
 
         # Checkpoint and attempt to write the logs.
-        # if self._checkpointer is not None:
-        #     self._checkpointer.save()
-        # if self._snapshotter is not None:
-        #     self._snapshotter.save()
+        if self._checkpointer is not None:
+            self._checkpointer.save()
+        if self._snapshotter is not None:
+            self._snapshotter.save()
         self._logger.write(fetches)
 
     def get_variables(self, names: List[str]) -> List[List[np.ndarray]]:
@@ -493,14 +493,10 @@ def average_gradients_across_replicas(replica_context, gradients):
     # Nones occur when you call tape.gradient(loss, variables) with some
     # variables that don't affect the loss.
     # See: https://github.com/tensorflow/tensorflow/issues/783
-    # print("*" * 32)
-    # print("gradients")
-    # print(gradients)
+
     gradients_without_nones = [g for g in gradients if g is not None]
     original_indices = [i for i, g in enumerate(gradients) if g is not None]
-    # print("*" * 32)
-    # print("gradients_without_nones")
-    # print(gradients_without_nones)
+
     results_without_nones = replica_context.all_reduce('mean',
                                                         gradients_without_nones)
     results = [None] * len(gradients)
