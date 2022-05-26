@@ -221,27 +221,37 @@ class D3PGLearner(acme.Learner):
             vehicle_critic_losses = []
             vehicle_policy_losses = []
             """Deal with the observations."""
-
-            o_t = self._target_vehicle_observation_network(
-                transitions.vehicle_next_observation[:, 0: int(self._vehicle_observation_size)])
-            o_t = tree.map_structure(tf.stop_gradient, o_t)
-            vehicles_a_t = self._target_vehicle_policy_network(o_t)
-            for vehicle_index in range(1, self._vehicle_number):
-                o_t = self._target_vehicle_observation_network(
-                    transitions.vehicle_next_observation[:, vehicle_index * self._vehicle_observation_size : (vehicle_index + 1) * self._vehicle_observation_size])
-                o_t = tree.map_structure(tf.stop_gradient, o_t)
-                a_t = self._target_vehicle_policy_network(o_t)
-                vehicles_a_t = tf.concat([vehicles_a_t, a_t], axis=1)
+            # the shpae of the transitions.vehicle_observation is [batch_size, vehicle_number, vehicle_observation_size]
+            batch_size = transitions.vehicle_observation.shape[0]
+            
+            # NOTE: the input of the vehicle_observation_network is 
+            # [batch_size * vehicle_number, vehicle_observation_size]
+            # it follows the order of [batch_size * vehicle_id, vehicle_observation_size]
+            # [0 * 0, vehicle_observation_size]
+            # [0 * 1, vehicle_observation_size]
+            # [0 * 2, vehicle_observation_size]
+            # .......
+            vehicles_o_t = self._target_vehicle_observation_network(
+                tf.reshape(transitions.vehicle_observation, shape=[-1, self._vehicle_observation_size]))
+            # the shape of vehicles_o_t is [batch_size * vehicle_number, _]
+            vehicles_o_t = tree.map_structure(tf.stop_gradient, vehicles_o_t)
+            # the shape of vehicles_a_t is [batch_size * vehicle_number, vehicle_action_size]
+            vehicles_a_t = self._target_vehicle_policy_network(vehicles_o_t)
+            
             
             for vehicle_index in range(self._vehicle_number):
                 # Maybe transform the observation before feeding into policy and critic.
                 # Transforming the observations this way at the start of the learning
                 # step effectively means that the policy and critic share observation
                 # network weights.
+
                 o_tm1 = self._vehicle_observation_network(
-                    transitions.vehicle_observation[:, vehicle_index * self._vehicle_observation_size : (vehicle_index + 1) * self._vehicle_observation_size])
+                    transitions.vehicle_observation[:, vehicle_index, :])
+                
+                # the shape of o_t is [batch_size, vehicle_observation_size]
                 o_t = self._target_vehicle_observation_network(
-                    transitions.vehicle_next_observation[:, vehicle_index * self._vehicle_observation_size : (vehicle_index + 1) * self._vehicle_observation_size])
+                    transitions.vehicle_next_observation[:, vehicle_index, :])
+                
                 # This stop_gradient prevents gradients to propagate into the target
                 # observation network. In addition, since the online policy network is
                 # evaluated at o_t, this also means the policy loss does not influence
@@ -250,7 +260,7 @@ class D3PGLearner(acme.Learner):
 
                 # Critic learning.
                 q_tm1 = self._vehicle_critic_network(o_tm1, transitions.action[:, : self._vehicle_number * self._vehicle_action_size])
-                q_t = self._target_vehicle_critic_network(o_t, vehicles_a_t)
+                q_t = self._target_vehicle_critic_network(o_t, tf.reshape(vehicles_a_t, shape=[batch_size, -1]))
 
                 # Critic loss.
                 vehicle_critic_loss = losses.categorical(q_tm1, transitions.reward[:, vehicle_index],
@@ -261,10 +271,10 @@ class D3PGLearner(acme.Learner):
                 if vehicle_index == 0:
                     dpg_a_t = self._vehicle_policy_network(o_t)
                 else:
-                    dpg_a_t = vehicles_a_t[:, 0: self._vehicle_action_size]
+                    dpg_a_t = tf.reshape(vehicles_a_t, shape=[batch_size, self._vehicle_number, self._vehicle_action_size])[:, 0, :]
                 for i in range(self._vehicle_number):
                     if i != 0 and i != vehicle_index:
-                        dpg_a_t = tf.concat([dpg_a_t, vehicles_a_t[:, i* self._vehicle_action_size: (i+1) * self._vehicle_action_size]], axis=1)
+                        dpg_a_t = tf.concat([dpg_a_t, tf.reshape(vehicles_a_t, shape=[batch_size, self._vehicle_number, self._vehicle_action_size])[:, i, :]], axis=1)
                     elif i != 0 and i == vehicle_index:
                         dpg_a_t = tf.concat([dpg_a_t, self._vehicle_policy_network(o_t)], axis=1)
                 
@@ -299,7 +309,7 @@ class D3PGLearner(acme.Learner):
 
             # Critic learning.
             a_t = self._target_edge_policy_network(o_t)
-            a_t = tf.concat([vehicles_a_t, a_t], axis=1)
+            a_t = tf.concat([tf.reshape(vehicles_a_t, shape=[batch_size, -1]), a_t], axis=1)
             q_tm1 = self._edge_critic_network(o_tm1, transitions.action)
             q_t = self._target_edge_critic_network(o_t, a_t)
 
@@ -309,7 +319,7 @@ class D3PGLearner(acme.Learner):
             edge_critic_losses.append(edge_critic_loss)
             # Actor learning.
             dpg_a_t = self._edge_policy_network(o_t)
-            dpg_a_t = tf.concat([vehicles_a_t, dpg_a_t], axis=1)
+            dpg_a_t = tf.concat([tf.reshape(vehicles_a_t, shape=[batch_size, -1]), dpg_a_t], axis=1)
             dpg_z_t = self._edge_critic_network(o_t, dpg_a_t)
             dpg_q_t = dpg_z_t.mean()
 

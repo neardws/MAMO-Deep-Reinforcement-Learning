@@ -218,7 +218,7 @@ class vehicularNetworkEnv(baseEnvironment):
             sensed_information_number=self._config.sensed_information_number,
             vehicle_observation_size=self._vehicle_observation_size,
             observation=observation,
-            is_output_two_dimension=False,
+            is_output_two_dimension=True,
         )
         return restart(observation=self._observation(), vehicle_observation=vehicle_observation)
 
@@ -311,7 +311,7 @@ class vehicularNetworkEnv(baseEnvironment):
             sensed_information_number=self._config.sensed_information_number,
             vehicle_observation_size=self._vehicle_observation_size,
             observation=observation,
-            is_output_two_dimension=False,
+            is_output_two_dimension=True,
         )
         # check for termination
         if self._time_slots.is_end():
@@ -649,10 +649,10 @@ class vehicularNetworkEnv(baseEnvironment):
     def vehicle_all_observation_spec(self) -> specs.BoundedArray:
         """Define and return the observation space."""
         return specs.BoundedArray(
-            shape=(self._config.vehicle_number * self._vehicle_observation_size,),
+            shape=(self._config.vehicle_number, self._vehicle_observation_size),
             dtype=float,
-            minimum=np.zeros((self._config.vehicle_number * self._vehicle_observation_size,)),
-            maximum=np.ones((self._config.vehicle_number * self._vehicle_observation_size,)),
+            minimum=np.zeros((self._config.vehicle_number , self._vehicle_observation_size)),
+            maximum=np.ones((self._config.vehicle_number , self._vehicle_observation_size)),
             name='vehicle_all_observations'
         )
 

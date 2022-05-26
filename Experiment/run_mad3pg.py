@@ -34,22 +34,5 @@ def main(_):
 
     program = agent.build()
     
-    (learner_node,) = program.groups['learner']
-    learner_node.disable_run()
-    
-    (evaluator_node,) = program.groups['evaluator']
-    evaluator_node.disable_run()
-    
-    actor_nodes = program.groups['actor']
-    for actor_node in actor_nodes:
-        actor_node.disable_run()
-    
     lp.launch(program, launch_type="local_mt", serialize_py_nodes=False)
-    
-    # learner: acme.Learner = learner_node.create_handle().dereference()
-    # evaluator: EnvironmentLoop = evaluator_node.create_handle().dereference()
-    # actors: list = [actor_node.create_handle().dereference() for actor_node in actor_nodes]
-    
-    # num_episodes = 100
-    # for _ in range(num_episodes):
         

@@ -31,7 +31,7 @@ from Agents.MAD3PG.networks import make_default_D3PGNetworks
 Replicator = Union[snt.distribute.Replicator, snt.distribute.TpuReplicator]
 
 # Valid values of the "accelerator" argument.
-_ACCELERATORS = ('CPU', 'GPU', 'TPU')
+_ACCELERATORS = ('GPU', 'TPU')
 
 @dataclasses.dataclass
 class D3PGConfig:
@@ -60,14 +60,14 @@ class D3PGConfig:
     discount: float = 0.99
     batch_size: int = 256
     prefetch_size: int = 4
-    target_update_period: int = 100
+    target_update_period: int = 4
     vehicle_policy_optimizer: Optional[snt.Optimizer] = None
     vehicle_critic_optimizer: Optional[snt.Optimizer] = None
     edge_policy_optimizer: Optional[snt.Optimizer] = None
     edge_critic_optimizer: Optional[snt.Optimizer] = None
     min_replay_size: int = 1000
     max_replay_size: int = 1000000
-    samples_per_insert: Optional[float] = 32.0
+    samples_per_insert: Optional[float] = 64.0
     n_step: int = 5
     sigma: float = 0.3
     clipping: bool = True

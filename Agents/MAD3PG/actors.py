@@ -4,7 +4,6 @@ from typing import Optional
 from acme import adders
 from Agents.MAD3PG import base
 from acme import types
-import numpy as np
 from acme.tf import utils as tf2_utils
 from acme.tf import variable_utils as tf2_variable_utils
 import dm_env
@@ -68,31 +67,20 @@ class FeedForwardActor(base.Actor):
     @tf.function(experimental_relax_shapes=True)
     def _policy(
         self, 
-        vehicle_observations: types.NestedArray,
-        edge_observation: types.NestedArray
-    ) -> types.NestedArray:
-        action = tf.zeros(shape=(1, self._vehicle_number * self._vehicle_action_size + self._edge_action_size), dtype=tf.float64)
-
-        for i in tf.data.Dataset.range(self._vehicle_number):
-            vehicle_observation = vehicle_observations[i * self._vehicle_observation_size: (i+1) * self._vehicle_observation_size]
-            # Add a dummy batch dimension and as a side effect convert numpy to TF.
-            vehicle_batched_observation = tf2_utils.add_batch_dim(vehicle_observation)
-            # Compute the policy, conditioned on the observation.
-            vehicle_policy = self._vehicle_policy_network(vehicle_batched_observation)
-            # Sample from the policy if it is stochastic.
-            vehicle_action = vehicle_policy.sample() if isinstance(vehicle_policy, tfd.Distribution) else vehicle_policy
-
-            action = tf.concat(
-                [action[:, :i * self._vehicle_action_size], vehicle_action, action[:, (i+1) * self._vehicle_action_size :]], 
-                axis=1)
-
-            action.set_shape([1, self._vehicle_number * self._vehicle_action_size + self._edge_action_size])
-
+        vehicle_observations: types.NestedTensor,
+        edge_observation: types.NestedTensor
+    ) -> types.NestedTensor:
+        # # Add a dummy batch dimension and as a side effect convert numpy to TF.
+        # vehicle_batched_observation = tf2_utils.add_batch_dim(vehicle_observations)
+        # Compute the policy, conditioned on the observation.
+        vehicle_policy = self._vehicle_policy_network(vehicle_observations)
+        # Sample from the policy if it is stochastic.
+        vehicle_action = vehicle_policy.sample() if isinstance(vehicle_policy, tfd.Distribution) else vehicle_policy
+        
         edge_batched_observation = tf2_utils.add_batch_dim(edge_observation)
         edge_policy = self._edge_policy_network(edge_batched_observation)
         edge_action = edge_policy.sample() if isinstance(edge_policy, tfd.Distribution) else edge_policy
-        action = tf.concat([action[:, :self._vehicle_number * self._vehicle_action_size], edge_action], axis=1)
-        action.set_shape([1, self._vehicle_number * self._vehicle_action_size + self._edge_action_size])
+        action = tf.concat([tf.reshape(vehicle_action, shape=(1, self._vehicle_number * self._vehicle_action_size)), edge_action], axis=1)
         return action
 
     def select_action(self, observation: types.NestedArray, vehicle_observations: types.NestedArray) -> types.NestedArray:
