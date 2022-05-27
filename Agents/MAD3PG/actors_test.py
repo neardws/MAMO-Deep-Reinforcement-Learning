@@ -28,10 +28,14 @@ class ActorTest(absltest.TestCase):
         actor = actors.FeedForwardActor(
             vehicle_policy_network=vehicle_policy_network,
             edge_policy_network=edge_policy_network,
+            
             vehicle_number=config.vehicle_number,
             information_number=config.information_number,
             sensed_information_number=config.sensed_information_number,
             vehicle_observation_size=env._vehicle_observation_size,
+            
+            vehicle_action_size=env._vehicle_action_size,
+            edge_action_size=env._edge_action_size,
         )
         loop = environment_loop.EnvironmentLoop(env, actor)
         loop.run(20)

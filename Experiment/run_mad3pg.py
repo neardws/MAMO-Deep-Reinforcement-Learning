@@ -29,7 +29,7 @@ def main(_):
         environment_factory=lambda x: vehicularNetworkEnv(environment_config),
         environment_spec=spec,
         networks=networks,
-        num_actors=10,
+        num_actors=1,
     )
 
     program = agent.build()

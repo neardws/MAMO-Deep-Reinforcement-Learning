@@ -1,11 +1,12 @@
 
 """Vehicular Network Environments."""
-
+import time
+from turtle import Turtle
 from dm_env import specs
 from acme.types import NestedSpec
 import numpy as np
 from Environments.dataStruct import applicationList, edge, edgeAction, informationList, informationPacket, informationRequirements, location, timeSlots, vehicleAction, vehicleList, viewList  
-from typing import List, Tuple, NamedTuple
+from typing import List, Optional, Tuple, NamedTuple
 from Environments._environment import baseEnvironment, TimeStep, restart, termination, transition
 import Environments.environmentConfig as env_config
 from Environments.utilities import sensingAndQueuing, v2iTransmission
@@ -227,18 +228,25 @@ class vehicularNetworkEnv(baseEnvironment):
         episode is reached, you are responsible for calling `reset()`
         to reset this environment's state.
         """
-
+        # start_time = time.time()
+        # myapp.debug("*" * 32)
+        # myapp.debug("environment.step start_time:", start_time)
+        
         if self._reset_next_step:
             return self.reset()
         
+        # myapp.debug("*" * 32)
+        # end_time = time.time()
+        # myapp.debug("environment reset time taken:", end_time - start_time)
+        # start_time = time.time()
+        
         views_required_number, information_type_required_by_views_at_now, vehicle_actions, edge_action = \
             self.transform_action_array_to_actions(action)
-        # myapp.dubug(f"\ntimestep:\n{self._time_slots.now()}")
-        # myapp.debug(f"\naction:\n{action}")
-        # myapp.debug(f"\nviews_required_number:\n{views_required_number}")
-        # myapp.debug(f"\ninformation_type_required_by_views_at_now:\n{information_type_required_by_views_at_now}")
-        # myapp.debug(f"\nvehicle_actions:\n{str([str(vehicle_action) for vehicle_action in vehicle_actions])}")
-        # myapp.debug(f"\nedge_action:\n{edge_action}")
+            
+        # myapp.debug("*" * 32)
+        # end_time = time.time()
+        # myapp.debug("environment transform_action_array_to_actions time taken:", end_time - start_time)
+        # start_time = time.time()
         
         """Compute the baseline reward and difference rewards."""
         information_objects_ordered_by_views = self.compute_information_objects(
@@ -247,13 +255,19 @@ class vehicularNetworkEnv(baseEnvironment):
             vehicle_actions=vehicle_actions,
             edge_action=edge_action,
         )
-        # myapp.debug(f"information_objects_ordered_by_views:\n{self.string_of_information_objects_ordered_by_views(information_objects_ordered_by_views)}")
+        # myapp.debug("*" * 32)
+        # end_time = time.time()
+        # myapp.debug("environment compute_information_objects time taken:", end_time - start_time)
+        # start_time = time.time()
 
         baseline_reward = self.compute_reward(
             information_objects_ordered_by_views=information_objects_ordered_by_views,
             vehicle_actions=vehicle_actions,
         )
-        # myapp.dubug(f"\nbaseline_reward:\n{baseline_reward}")
+        # myapp.debug("*" * 32)
+        # end_time = time.time()
+        # myapp.debug("environment compute_reward time taken:", end_time - start_time)
+        # start_time = time.time()
 
         self._reward[-1] = baseline_reward
         for i in range(self._config.vehicle_number):
@@ -263,12 +277,20 @@ class vehicularNetworkEnv(baseEnvironment):
                 vehicle_actions=vehicle_actions,
                 edge_action=edge_action,
                 vehicle_index=i,
-            )   
+            )
+            # myapp.debug("*" * 32)
+            # end_time = time.time()
+            # myapp.debug("environment vehicle {i} compute_information_objects time taken:", end_time - start_time)
+            # start_time = time.time()
             vehicle_reward = baseline_reward - self.compute_reward(
                 information_objects_ordered_by_views=information_objects_ordered_by_views,
                 vehicle_actions=vehicle_actions,
                 vehicle_index=i,
             )
+            # myapp.debug("*" * 32)
+            # end_time = time.time()
+            # myapp.debug("environment vehicle {i} compute_reward time taken:", end_time - start_time)
+            # start_time = time.time()
             self._reward[i] = vehicle_reward
         reward_history_at_now = vehicularNetworkEnv.get_reward_history_at_now(int(self._time_slots.now()))
         # myapp.dubug(f"\nreward_history_at_now:\n{reward_history_at_now}")
@@ -287,8 +309,11 @@ class vehicularNetworkEnv(baseEnvironment):
         else:
             raise ValueError("len(reward_history_at_now) = {}".format(len(reward_history_at_now)))
         self._reward[-2] = edge_reward
-
-        # myapp.dubug(f"\nreward:\n{self._reward}")
+        
+        # myapp.debug("*" * 32)
+        # end_time = time.time()
+        # myapp.debug("environment reward set time taken:", end_time - start_time)
+        # start_time = time.time()
 
         """Update the information in the edge node."""
         information_objects_ordered_by_views = self.compute_information_objects(
@@ -297,14 +322,30 @@ class vehicularNetworkEnv(baseEnvironment):
             vehicle_actions=vehicle_actions,
             edge_action=edge_action,
         )
+        
+        # myapp.debug("*" * 32)
+        # end_time = time.time()
+        # myapp.debug("environment Update the information time taken:", end_time - start_time)
+        # start_time = time.time()
 
         self.update_information_in_edge(
             information_objects_ordered_by_views=information_objects_ordered_by_views,
         )
+        
+        # myapp.debug("*" * 32)
+        # end_time = time.time()
+        # myapp.debug("environment update_information_in_edge time taken:", end_time - start_time)
+        # start_time = time.time()
 
         # myapp.debug(f"\ninformation_objects_ordered_by_views:\n{self.string_of_information_objects_ordered_by_views(information_objects_ordered_by_views)}")
         
         observation = self._observation()
+        
+        # myapp.debug("*" * 32)
+        # end_time = time.time()
+        # myapp.debug("environment _observation() time taken:", end_time - start_time)
+        # start_time = time.time()
+        
         vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
             vehicle_number=self._config.vehicle_number,
             information_number=self._config.information_number,
@@ -313,6 +354,12 @@ class vehicularNetworkEnv(baseEnvironment):
             observation=observation,
             is_output_two_dimension=True,
         )
+        
+        # myapp.debug("*" * 32)
+        # end_time = time.time()
+        # myapp.debug("environment get_vehicle_observations time taken:", end_time - start_time)
+        # start_time = time.time()
+        
         # check for termination
         if self._time_slots.is_end():
             self._reset_next_step = True
@@ -330,6 +377,12 @@ class vehicularNetworkEnv(baseEnvironment):
         Returns:
             actions: the actions of vehicles and the edge node.
         """ 
+        start_time = time.time()
+        first_start_time = start_time
+        myapp.debug("*" * 32)
+        myapp.debug("transform")
+        myapp.debug(f"transform_action_array_to_actions start_time: {start_time}")
+        
         vhielce_action_array = action[0: self._config.vehicle_number * self._vehicle_action_size]
         edge_action_array = action[self._config.vehicle_number * self._vehicle_action_size:]
         
@@ -337,10 +390,8 @@ class vehicularNetworkEnv(baseEnvironment):
             len(edge_action_array) != self._edge_action_size:
             raise ValueError('The length of the action is not correct.')
 
-        vehicle_actions: List[vehicleAction] = []
-        for i in range(self._config.vehicle_number):
-            vehicle_actions.append(
-                vehicleAction.generate_from_np_array(
+        vehicle_actions: List[vehicleAction] = [
+            generate_vehicle_action_from_np_array(
                     vehicle_index=i,
                     now_time=self._time_slots.now(),
                     vehicle_list=self._vehicle_list,
@@ -356,20 +407,31 @@ class vehicularNetworkEnv(baseEnvironment):
                     SNR_target_up_bound=self._config.SNR_target_up_bound,
                     probabiliity_threshold=self._config.probabiliity_threshold,
                     action_time=self._time_slots.now(),
-                )
-            )
+            ) for i in range(self._config.vehicle_number)
+        ]
         
-        edge_action: edgeAction = edgeAction.generate_from_np_array(
+        myapp.debug("*" * 32)
+        end_time = time.time()
+        myapp.debug(f"vehicleAction.generate_from_np_array time taken: {end_time - start_time}")
+        start_time = time.time()
+        
+        edge_action: edgeAction = generate_edge_action_from_np_array(
             now_time=self._time_slots.now(),
             edge_node=self._edge_node,
             action_time=self._time_slots.now(),
             network_output=edge_action_array,
             vehicle_number=self._config.vehicle_number,
         )
+        myapp.debug("*" * 32)
+        end_time = time.time()
+        myapp.debug(f"edgeAction.generate_from_np_array time taken: {end_time - start_time}")
+        start_time = time.time()
         
         views_required_number: int = self._information_requirements.get_views_required_number_at_now(self._time_slots.now())
         information_type_required_by_views_at_now: List[List[int]] = self._information_requirements.get_information_type_required_by_views_at_now_at_now(self._time_slots.now())
 
+
+        
         return views_required_number, information_type_required_by_views_at_now, vehicle_actions, edge_action
 
     def compute_information_objects(
@@ -897,6 +959,329 @@ class vehicularNetworkEnv(baseEnvironment):
             string += "\n"
         return string
 
+def cover_dBm_to_W(dBm: float) -> float:
+    return np.power(10, (dBm / 10)) / 1000
+
+def cover_mW_to_W(mW: float) -> float:
+    return mW / 1000
+
+def cover_ratio_to_dB(ratio: float) -> float:
+    return 10 * np.log10(ratio)
+
+def compute_SNR(
+    white_gaussian_noise: int,
+    channel_fading_gain: float,
+    distance: float,
+    path_loss_exponent: int,
+    transmission_power: float) -> float:
+    """
+    Compute the SNR of a vehicle transmission
+    Args:
+        white_gaussian_noise: the white gaussian noise of the channel, e.g., -70 dBm
+        channel_fading_gain: the channel fading gain, e.g., Gaussion distribution with mean 2 and variance 0.4
+        distance: the distance between the vehicle and the edge, e.g., 300 meters
+        path_loss_exponent: the path loss exponent, e.g., 3
+        transmission_power: the transmission power of the vehicle, e.g., 10 mW
+    Returns:
+        SNR: the SNR of the transmission
+    """
+    return (1.0 / cover_dBm_to_W(white_gaussian_noise)) * \
+        np.power(np.abs(channel_fading_gain), 2) * \
+        1.0 / (np.power(distance, path_loss_exponent)) * \
+        cover_mW_to_W(transmission_power)
+
+def compute_successful_tansmission_probability(
+    white_gaussian_noise: int,
+    channel_fading_gains: np.ndarray,
+    distance: float,
+    path_loss_exponent: int,
+    transmission_power: float,
+    SNR_target: float) -> float:
+    """
+    Compute the sussessful transmission probability of the vehicle to the edge
+    Args:
+        white_gaussian_noise: the white gaussian noise of the channel
+        channel_fading_gains: the channel fading gains
+        distance: the distance between the vehicle and the edge
+        path_loss_exponent: the path loss exponent
+        transmission_power: the transmission power of the vehicle
+        SNR_target: the target SNR
+    Returns:
+        sussessful_tansmission_probability: the sussessful transmission probability of the vehicle to the edge
+    """
+    successful_transmission_number = 0
+    total_number = 0
+    for channel_fading_gain in channel_fading_gains:
+        total_number += 1
+        SNR = compute_SNR(
+            white_gaussian_noise=white_gaussian_noise,
+            channel_fading_gain=channel_fading_gain,
+            distance=distance,
+            path_loss_exponent=path_loss_exponent,
+            transmission_power=transmission_power
+        )
+        if cover_ratio_to_dB(SNR) >= SNR_target:
+            successful_transmission_number += 1
+    return successful_transmission_number / total_number
+
+def generate_channel_fading_gain(mean_channel_fading_gain, second_moment_channel_fading_gain, size: int = 1):
+    channel_fading_gain = np.random.normal(loc=mean_channel_fading_gain, scale=second_moment_channel_fading_gain, size=size)
+    return channel_fading_gain
+
+def get_minimum_transmission_power(
+    white_gaussian_noise: int,
+    mean_channel_fading_gain: float,
+    second_moment_channel_fading_gain: float,
+    distance: float,
+    path_loss_exponent: int,
+    transmission_power: float,
+    SNR_target: float,
+    probabiliity_threshold: float) -> float:
+    """
+    Get the minimum transmission power of the vehicle to the edge
+    Args:
+        white_gaussian_noise: the white gaussian noise of the channel
+        mean_channel_fading_gain: the mean channel fading gain
+        second_moment_channel_fading_gain: the second moment channel fading gain
+        distance: the distance between the vehicle and the edge
+        path_loss_exponent: the path loss exponent
+        transmission_power: the transmission power of the vehicle
+        SNR_target: the target SNR
+        probabiliity_threshold: the probability threshold
+    Returns:
+        minimum_transmission_power: the minimum transmission power of the vehicle to the edge
+    """
+
+    minimum_transmission_power = transmission_power
+    minimum_power = 0
+    maximum_power = transmission_power
+    channel_fading_gains = generate_channel_fading_gain(
+        mean_channel_fading_gain=mean_channel_fading_gain,
+        second_moment_channel_fading_gain=second_moment_channel_fading_gain,
+        size=100
+    )
+    while_flag = True
+    mid = minimum_power
+    mid_probabiliity = compute_successful_tansmission_probability(
+        white_gaussian_noise=white_gaussian_noise,
+        channel_fading_gains=channel_fading_gains,
+        distance=distance,
+        path_loss_exponent=path_loss_exponent,
+        transmission_power=mid,
+        SNR_target=SNR_target
+    )
+    if mid_probabiliity > probabiliity_threshold:
+        minimum_transmission_power = mid
+        while_flag = False
+    
+    mid = maximum_power
+    mid_probabiliity = compute_successful_tansmission_probability(
+        white_gaussian_noise=white_gaussian_noise,
+        channel_fading_gains=channel_fading_gains,
+        distance=distance,
+        path_loss_exponent=path_loss_exponent,
+        transmission_power=mid,
+        SNR_target=SNR_target
+    )
+    if mid_probabiliity <= probabiliity_threshold:
+        minimum_transmission_power = mid
+        while_flag = False
+    
+    while while_flag:
+        
+        # myapp.debug("*" * 32)
+        # myapp.debug(f"minimum_power: {minimum_power}")
+        # myapp.debug(f"maximum_power: {maximum_power}")
+        mid = (minimum_power + maximum_power) / 2
+        # myapp.debug(f"mid: {mid}")
+        # myapp.debug("*" * 32)
+        
+        mid_plus = mid + 0.01
+        mid_probabiliity = compute_successful_tansmission_probability(
+            white_gaussian_noise=white_gaussian_noise,
+            channel_fading_gains=channel_fading_gains,
+            distance=distance,
+            path_loss_exponent=path_loss_exponent,
+            transmission_power=mid,
+            SNR_target=SNR_target
+        )
+        mid_plus_probabiliity = compute_successful_tansmission_probability(
+            white_gaussian_noise=white_gaussian_noise,
+            channel_fading_gains=channel_fading_gains,
+            distance=distance,
+            path_loss_exponent=path_loss_exponent,
+            transmission_power=mid_plus,
+            SNR_target=SNR_target
+        )
+        # myapp.debug(f"mid_probabiliity: {mid_probabiliity}")
+        # myapp.debug(f"probabiliity_threshold: {probabiliity_threshold}")
+        # myapp.debug(f"mid_plus_probabiliity: {mid_plus_probabiliity}")
+        # myapp.debug("*" * 32)
+        if minimum_power > maximum_power:
+            minimum_transmission_power = (minimum_power + maximum_power) / 2
+            break
+        if mid_probabiliity <= probabiliity_threshold and mid_plus_probabiliity >= probabiliity_threshold:
+            minimum_transmission_power = mid
+            break
+        else:
+            if mid_probabiliity < probabiliity_threshold:
+                minimum_power = mid
+            else:
+                maximum_power = mid
+
+    return minimum_transmission_power
+
+
+def rescale_the_list_to_small_than_one(list_to_rescale: List[float], is_sum_equal_one: Optional[bool] = False) -> List[float]:
+    """ rescale the list small than one.
+    Args:
+        list_to_rescale: list to rescale.
+    Returns:
+        rescaled list.
+    """
+    if is_sum_equal_one:
+        maximum_sum = sum(list_to_rescale)
+    else:
+        maximum_sum = sum(list_to_rescale) + 0.00001
+    return [x / maximum_sum for x in list_to_rescale]   # rescale the list to small than one.
+
+def generate_vehicle_action_from_np_array(
+    now_time: int,
+    vehicle_index: int,
+    vehicle_list: vehicleList,
+    information_list: informationList,
+    sensed_information_number: int,
+    network_output: np.ndarray,
+    white_gaussian_noise: int,
+    mean_channel_fading_gain: float,
+    second_moment_channel_fading_gain: float,
+    edge_location: location,
+    path_loss_exponent: int,
+    SNR_target_low_bound: float,
+    SNR_target_up_bound: float,
+    probabiliity_threshold: float,
+    action_time: int):
+    """ generate the vehicle action from the neural network output.
+
+    self._vehicle_action_size = self._sensed_information_number + self._sensed_information_number + \
+        self._sensed_information_number + 1
+        # sensed_information + sensing_frequencies + uploading_priorities + transmission_power
+
+    Args:
+        network_output: the output of the neural network.
+    Returns:
+        the vehicle action.
+    """
+    start_time = time.time()
+    myapp.debug("*" * 32)
+    myapp.debug(f"generate_vehicle_action_from_np_array start_time: {start_time}")
+    
+    sensed_information = np.zeros(sensed_information_number)
+    sensing_frequencies = np.zeros(sensed_information_number)
+    uploading_priorities = np.zeros(sensed_information_number)
+
+    for index, values in enumerate(network_output[:sensed_information_number]):
+        if values > 0.5:
+            sensed_information[index] = 1
+    frequencies = network_output[sensed_information_number: 2*sensed_information_number]
+    frequencies = rescale_the_list_to_small_than_one(frequencies)
+    for index, values in enumerate(frequencies):
+        if sensed_information[index] == 1:
+            sensing_frequencies[index] = (values - 0.01) / information_list.get_mean_service_time_by_vehicle_and_type(
+                vehicle_index=vehicle_index,
+                data_type_index=vehicle_list.get_vehicle(vehicle_index).get_information_type_canbe_sensed(index)
+            )
+    for index, values in enumerate(network_output[2*sensed_information_number: 3*sensed_information_number]):
+        if sensed_information[index] == 1:
+            uploading_priorities[index] = values
+
+    sensed_information = list(sensed_information)
+    sensing_frequencies = list(sensing_frequencies)
+    uploading_priorities = list(uploading_priorities)
+    
+    myapp.debug("*" * 32)
+    end_time = time.time()
+    myapp.debug(f"generate_vehicle_action_from_np_array step 1 time taken: {end_time - start_time}")
+    start_time = time.time()
+
+    SNR_target = np.random.random() * (SNR_target_up_bound - SNR_target_low_bound) + SNR_target_low_bound
+
+    minimum_transmission_power = get_minimum_transmission_power(
+        white_gaussian_noise=white_gaussian_noise,
+        mean_channel_fading_gain=mean_channel_fading_gain,
+        second_moment_channel_fading_gain=second_moment_channel_fading_gain,
+        distance=vehicle_list.get_vehicle(vehicle_index).get_vehicle_location(now_time).get_distance(edge_location),
+        path_loss_exponent=path_loss_exponent,
+        transmission_power=vehicle_list.get_vehicle(vehicle_index).get_transmission_power(),
+        SNR_target=SNR_target,
+        probabiliity_threshold=probabiliity_threshold
+    )
+    
+    myapp.debug("*" * 32)
+    end_time = time.time()
+    myapp.debug(f"generate_vehicle_action_from_np_array step 2 time taken: {end_time - start_time}")
+    start_time = time.time()
+
+    transmisson_power = minimum_transmission_power + network_output[-1] * \
+        (vehicle_list.get_vehicle(vehicle_index).get_transmission_power() - minimum_transmission_power)
+    
+    myapp.debug("*" * 32)
+    end_time = time.time()
+    myapp.debug(f"generate_vehicle_action_from_np_array step 3 time taken: {end_time - start_time}")
+    start_time = time.time()
+    
+    vehicle_action = vehicleAction(
+        vehicle_index=vehicle_index,
+        now_time=now_time,
+
+        sensed_information=sensed_information,
+        sensing_frequencies=sensing_frequencies,
+        uploading_priorities=uploading_priorities,
+        transmission_power=transmisson_power,
+
+        action_time=action_time,
+    )
+
+    if not vehicle_action.check_action(now_time, vehicle_list):
+        raise ValueError("The vehicle action is not valid.")
+    
+    myapp.debug("*" * 32)
+    end_time = time.time()
+    myapp.debug(f"generate_vehicle_action_from_np_array step 4 time taken: {end_time - start_time}")
+    start_time = time.time()
+    
+    return vehicle_action
+
+
+def generate_edge_action_from_np_array(
+    now_time: int,
+    edge_node: edge,
+    action_time: int,
+    network_output: np.ndarray,
+    vehicle_number: int):
+    """ generate the edge action from the neural network output.
+    Args:
+        network_output: the output of the neural network.
+    Returns:
+        the edge action.
+    """
+    bandwidth_allocation = np.zeros((vehicle_number,))
+    bandwidth = rescale_the_list_to_small_than_one(list(network_output))
+    for index, values in enumerate(bandwidth):
+        bandwidth_allocation[index] = values * edge_node.get_bandwidth()
+
+    edge_action = edgeAction(
+        edge=edge_node,
+        now_time=now_time,
+        vehicle_number=vehicle_number,
+        bandwidth_allocation=bandwidth_allocation,
+        action_time=action_time
+    )
+
+    if not edge_action.check_action(now_time):
+        raise ValueError("the edge action is invalid.")
+
+    return edge_action
 
 
 Array = specs.Array

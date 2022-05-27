@@ -1,18 +1,3 @@
-# python3
-# Copyright 2018 DeepMind Technologies Limited. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """A simple agent-environment training loop."""
 
 import operator
@@ -65,6 +50,7 @@ class EnvironmentLoop(base.Worker):
         # Internalize agent and environment.
         self._environment = environment
         self._actor = actor
+        self._label = label
         self._counter = counter or counting.Counter()
         self._logger = logger or loggers.make_default_logger(label)
         self._should_update = should_update
@@ -81,7 +67,10 @@ class EnvironmentLoop(base.Worker):
         An instance of `loggers.LoggingData`.
         """
         # Reset any counts and start the environment.
+        
         start_time = time.time()
+        # print("*" * 32)
+        # print("start_time:", start_time)
         episode_steps = 0
 
         # For evaluation, this keeps track of the total undiscounted reward
@@ -89,29 +78,55 @@ class EnvironmentLoop(base.Worker):
         episode_return = tree.map_structure(_generate_zeros_from_spec,
                                             self._environment.reward_spec())
         timestep = self._environment.reset()
+        
+        # print("*" * 32)
+        # end_time = time.time()
+        # print("reset time taken:", end_time - start_time)
+        # start_time = time.time()
         # Make the first observation.
         self._actor.observe_first(timestep)
         for observer in self._observers:
             # Initialize the observer with the current state of the env after reset
             # and the initial timestep.
             observer.observe_first(self._environment, timestep)
-
+        # print("*" * 32)
+        # end_time = time.time()
+        # print("observer time taken:", end_time - start_time)
+        # start_time = time.time()
         # Run an episode.
         while not timestep.last():
             # Generate an action from the agent's policy and step the environment.
             action = self._actor.select_action(timestep.observation, timestep.vehicle_observation)
+            # print("*" * 32)
+            # end_time = time.time()
+            # print("select_action time taken:", end_time - start_time)
+            # start_time = time.time()
             timestep = self._environment.step(action)
+            # print("*" * 32)
+            # end_time = time.time()
+            # print("environment.step time taken:", end_time - start_time)
+            # start_time = time.time()
             # Have the agent observe the timestep and let the actor update itself.
             self._actor.observe(action=action, next_timestep=timestep)
             for observer in self._observers:
                 # One environment step was completed. Observe the current state of the
                 # environment, the current timestep and the action.
                 observer.observe(self._environment, timestep, action)
+            # print("*" * 32)
+            # end_time = time.time()
+            # print("actor.observe time taken:", end_time - start_time)
+            # start_time = time.time()
             if self._should_update:
                 self._actor.update()
+            # print("*" * 32)
+            # end_time = time.time()
+            # print("actor.update time taken:", end_time - start_time)
+            # start_time = time.time()
 
         # Book-keeping.
         episode_steps += 1
+        # end_time = time.time()
+        # print("time taken: ", end_time - start_time)
 
         # Equivalent to: episode_return += timestep.reward
         # We capture the return value because if timestep.reward is a JAX
@@ -128,6 +143,7 @@ class EnvironmentLoop(base.Worker):
         # Collect the results and combine with counts.
         steps_per_second = episode_steps / (time.time() - start_time)
         result = {
+            'label': self._label,
             'episode_length': episode_steps,
             'episode_return': episode_return,
             'steps_per_second': steps_per_second,
