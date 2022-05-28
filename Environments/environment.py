@@ -6,7 +6,7 @@ from dm_env import specs
 from acme.types import NestedSpec
 import numpy as np
 from Environments.dataStruct import applicationList, edge, edgeAction, informationList, informationPacket, informationRequirements, location, timeSlots, vehicleAction, vehicleList, viewList  
-from typing import List, Optional, Tuple, NamedTuple
+from typing import List, Optional, Tuple, NamedTuple, Dict
 from Environments._environment import baseEnvironment, TimeStep, restart, termination, transition
 import Environments.environmentConfig as env_config
 from Environments.utilities import sensingAndQueuing, v2iTransmission
@@ -15,28 +15,27 @@ from Log.logger import myapp
 
 class vehicularNetworkEnv(baseEnvironment):
     """Vehicular Network Environment built on the dm_env framework."""
-    reward_history: List[List[float]] = None
+    reward_history: List[Dict[str, float]] = None
 
     @classmethod
     def init_reward_history(cls, time_slots_number) -> None:
         """Set the reward history."""
-        cls.reward_history = [[] for _ in range(time_slots_number)]
+        cls.reward_history = [{"max": -100, "min": 100} for _ in range(time_slots_number)]
 
     @classmethod
     def append_reward_at_now(cls, now: int, reward: float) -> None:
-        cls.reward_history[now].append(reward)
-
-    @classmethod
-    def get_reward_history_at_now(cls, now: int) -> List[float]:
-        return cls.reward_history[now]
+        if reward > cls.reward_history[now]["max"]:
+            cls.reward_history[now]["max"] = reward
+        if reward < cls.reward_history[now]["min"]:
+            cls.reward_history[now]["min"] = reward
 
     @classmethod
     def get_min_reward_at_now(cls, now: int) -> float:
-        return min(cls.reward_history[now])
+        return cls.reward_history[now]["min"]
 
     @classmethod
     def get_max_reward_at_now(cls, now: int) -> float:
-        return max(cls.reward_history[now])
+        return cls.reward_history[now]["max"]
 
     def __init__(
         self, 
@@ -55,7 +54,15 @@ class vehicularNetworkEnv(baseEnvironment):
             end=self._config.time_slot_end,
             slot_length=self._config.time_slot_length,
         )
-
+        
+        self._channel_fading_gains = self.generate_channel_fading_gain(
+            mean_channel_fading_gain=self._config.mean_channel_fading_gain,
+            second_moment_channel_fading_gain=self._config.second_moment_channel_fading_gain,
+            size=100
+        )
+        
+        self._successful_tansmission_probability: Dict = {}
+        
         self._vehicle_list: vehicleList = vehicleList(
             number=self._config.vehicle_number,
             time_slots=self._time_slots,
@@ -125,9 +132,14 @@ class vehicularNetworkEnv(baseEnvironment):
                 self._define_size_of_spaces()
     
         """To record the timeliness, consistency, redundancy, and cost of views."""
-        self._timeliness_views_history: List[float] = []
-        self._consistency_views_history: List[float] = []
-        self._redundancy_views_history: List[float] = []
+        self._max_timeliness: float = -1
+        self._min_timeliness: float = 100000000
+        self._max_consistency: float = -1
+        self._min_consistency: float = 100000000
+        self._max_redundancy: float = -1
+        self._min_redundancy: float = 100000000
+        self._max_cost: float = -1
+        self._min_cost: float = 100000000
         self._cost_views_history: List[float] = []
 
         self._reward: np.ndarray = np.zeros(self._reward_size)
@@ -211,6 +223,12 @@ class vehicularNetworkEnv(baseEnvironment):
                     received_moment=0,
                 )
             ])
+        self._channel_fading_gains = self.generate_channel_fading_gain(
+            mean_channel_fading_gain=self._config.mean_channel_fading_gain,
+            second_moment_channel_fading_gain=self._config.second_moment_channel_fading_gain,
+            size=100
+        )
+        self._successful_tansmission_probability.clear()
         self._reset_next_step = False
         observation = self._observation()
         vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
@@ -223,31 +241,44 @@ class vehicularNetworkEnv(baseEnvironment):
         )
         return restart(observation=self._observation(), vehicle_observation=vehicle_observation)
 
-    def step(self, action: np.ndarray) -> TimeStep:
+    def step(self, action: np.ndarray):
         """Run one timestep of the environment's dynamics. When end of
         episode is reached, you are responsible for calling `reset()`
         to reset this environment's state.
         """
-        # start_time = time.time()
-        # myapp.debug("*" * 32)
-        # myapp.debug("environment.step start_time:", start_time)
+        transform_action_array_to_actions_taken_time = 0
+        compute_baseline_information_objects_taken_time = 0
+        compute_baseline_reward_taken_time = 0
+        
+        baseline_reward_compute_the_timeliness_of_views_times = 0
+        baseline_reward_compute_the_consistency_of_views_times = 0
+        baseline_reward_compute_the_redundancy_of_views_times = 0
+        baseline_reward_compute_the_cost_of_views_times = 0 
+        baseline_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times = 0
+        baseline_reward_compute_the_age_of_view_times = 0
+        
+        compute_vehicle_information_objects_taken_time = 0
+        compute_vehicle_reward_taken_time = 0
+        
+        vehicle_reward_compute_the_timeliness_of_views_times = 0
+        vehicle_reward_compute_the_consistency_of_views_times = 0
+        vehicle_reward_compute_the_redundancy_of_views_times = 0
+        vehicle_reward_compute_the_cost_of_views_times = 0 
+        vehicle_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times = 0
+        vehicle_reward_compute_the_age_of_view_times = 0
+        
+        reward_history_taken_time = 0
+        update_information_objects_taken_time = 0
+        observation_taken_time = 0
         
         if self._reset_next_step:
             return self.reset()
-        
-        # myapp.debug("*" * 32)
-        # end_time = time.time()
-        # myapp.debug("environment reset time taken:", end_time - start_time)
-        # start_time = time.time()
-        
+        start_time = time.time()
         views_required_number, information_type_required_by_views_at_now, vehicle_actions, edge_action = \
             self.transform_action_array_to_actions(action)
-            
-        # myapp.debug("*" * 32)
-        # end_time = time.time()
-        # myapp.debug("environment transform_action_array_to_actions time taken:", end_time - start_time)
-        # start_time = time.time()
+        transform_action_array_to_actions_taken_time += time.time() - start_time
         
+        start_time = time.time()
         """Compute the baseline reward and difference rewards."""
         information_objects_ordered_by_views = self.compute_information_objects(
             views_required_number=views_required_number,
@@ -255,22 +286,28 @@ class vehicularNetworkEnv(baseEnvironment):
             vehicle_actions=vehicle_actions,
             edge_action=edge_action,
         )
-        # myapp.debug("*" * 32)
-        # end_time = time.time()
-        # myapp.debug("environment compute_information_objects time taken:", end_time - start_time)
-        # start_time = time.time()
-
+        compute_baseline_information_objects_taken_time += time.time() - start_time
+        
+        start_time = time.time()
         baseline_reward = self.compute_reward(
-            information_objects_ordered_by_views=information_objects_ordered_by_views,
-            vehicle_actions=vehicle_actions,
-        )
-        # myapp.debug("*" * 32)
-        # end_time = time.time()
-        # myapp.debug("environment compute_reward time taken:", end_time - start_time)
-        # start_time = time.time()
+                information_objects_ordered_by_views=information_objects_ordered_by_views,
+                vehicle_actions=vehicle_actions,
+            )
+        
+        # baseline_reward_compute_the_timeliness_of_views_times = compute_the_timeliness_of_views_time
+        # baseline_reward_compute_the_consistency_of_views_times = compute_the_consistency_of_views_time
+        # baseline_reward_compute_the_redundancy_of_views_times = compute_the_redundancy_of_views_time
+        # baseline_reward_compute_the_cost_of_views_times = compute_the_cost_of_views_time
+        # baseline_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times = normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time
+        # baseline_reward_compute_the_age_of_view_times = compute_the_age_of_view_time
+        
+        compute_baseline_reward_taken_time += time.time() - start_time
 
         self._reward[-1] = baseline_reward
+        
+        
         for i in range(self._config.vehicle_number):
+            start_time = time.time()
             information_objects_ordered_by_views = self.compute_information_objects(
                 views_required_number=views_required_number,
                 information_type_required_by_views_at_now=information_type_required_by_views_at_now,
@@ -278,43 +315,40 @@ class vehicularNetworkEnv(baseEnvironment):
                 edge_action=edge_action,
                 vehicle_index=i,
             )
-            # myapp.debug("*" * 32)
-            # end_time = time.time()
-            # myapp.debug("environment vehicle {i} compute_information_objects time taken:", end_time - start_time)
-            # start_time = time.time()
-            vehicle_reward = baseline_reward - self.compute_reward(
+            compute_vehicle_information_objects_taken_time += time.time() - start_time
+
+            start_time = time.time()
+            vehicle_baseline_reward = self.compute_reward(
                 information_objects_ordered_by_views=information_objects_ordered_by_views,
                 vehicle_actions=vehicle_actions,
                 vehicle_index=i,
             )
-            # myapp.debug("*" * 32)
-            # end_time = time.time()
-            # myapp.debug("environment vehicle {i} compute_reward time taken:", end_time - start_time)
-            # start_time = time.time()
+            
+            # vehicle_reward_compute_the_timeliness_of_views_times += compute_the_timeliness_of_views_time
+            # vehicle_reward_compute_the_consistency_of_views_times += compute_the_consistency_of_views_time
+            # vehicle_reward_compute_the_redundancy_of_views_times += compute_the_redundancy_of_views_time
+            # vehicle_reward_compute_the_cost_of_views_times += compute_the_cost_of_views_time
+            # vehicle_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times += normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time
+            # vehicle_reward_compute_the_age_of_view_times += compute_the_age_of_view_time
+            
+            vehicle_reward = baseline_reward - vehicle_baseline_reward
             self._reward[i] = vehicle_reward
-        reward_history_at_now = vehicularNetworkEnv.get_reward_history_at_now(int(self._time_slots.now()))
-        # myapp.dubug(f"\nreward_history_at_now:\n{reward_history_at_now}")
-        if len(reward_history_at_now) == 0:
-            edge_reward = baseline_reward
-        elif len(reward_history_at_now) == 1:
-            min_reward_history_at_now = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
-            edge_reward = baseline_reward - min_reward_history_at_now
-        elif len(reward_history_at_now) > 1:
-            min_reward_history_at_now = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
-            max_reward_history_at_now = vehicularNetworkEnv.get_max_reward_at_now(int(self._time_slots.now()))
+            compute_vehicle_reward_taken_time += time.time() - start_time
+        
+        start_time = time.time()
+        min_reward_history_at_now = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
+        max_reward_history_at_now = vehicularNetworkEnv.get_max_reward_at_now(int(self._time_slots.now()))
+        if min_reward_history_at_now != 100 and max_reward_history_at_now != -100:
             if (max_reward_history_at_now - min_reward_history_at_now) == 0:
                 edge_reward = baseline_reward - min_reward_history_at_now
             else:
                 edge_reward = (baseline_reward - min_reward_history_at_now) / (max_reward_history_at_now - min_reward_history_at_now)
         else:
-            raise ValueError("len(reward_history_at_now) = {}".format(len(reward_history_at_now)))
+            edge_reward = baseline_reward
         self._reward[-2] = edge_reward
-        
-        # myapp.debug("*" * 32)
-        # end_time = time.time()
-        # myapp.debug("environment reward set time taken:", end_time - start_time)
-        # start_time = time.time()
+        reward_history_taken_time += time.time() - start_time
 
+        start_time = time.time()
         """Update the information in the edge node."""
         information_objects_ordered_by_views = self.compute_information_objects(
             views_required_number=views_required_number,
@@ -322,30 +356,15 @@ class vehicularNetworkEnv(baseEnvironment):
             vehicle_actions=vehicle_actions,
             edge_action=edge_action,
         )
-        
-        # myapp.debug("*" * 32)
-        # end_time = time.time()
-        # myapp.debug("environment Update the information time taken:", end_time - start_time)
-        # start_time = time.time()
 
         self.update_information_in_edge(
             information_objects_ordered_by_views=information_objects_ordered_by_views,
         )
-        
-        # myapp.debug("*" * 32)
-        # end_time = time.time()
-        # myapp.debug("environment update_information_in_edge time taken:", end_time - start_time)
-        # start_time = time.time()
-
+        update_information_objects_taken_time += time.time() - start_time
         # myapp.debug(f"\ninformation_objects_ordered_by_views:\n{self.string_of_information_objects_ordered_by_views(information_objects_ordered_by_views)}")
-        
+        start_time = time.time()
         observation = self._observation()
-        
-        # myapp.debug("*" * 32)
-        # end_time = time.time()
-        # myapp.debug("environment _observation() time taken:", end_time - start_time)
-        # start_time = time.time()
-        
+
         vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
             vehicle_number=self._config.vehicle_number,
             information_number=self._config.information_number,
@@ -354,18 +373,53 @@ class vehicularNetworkEnv(baseEnvironment):
             observation=observation,
             is_output_two_dimension=True,
         )
-        
-        # myapp.debug("*" * 32)
-        # end_time = time.time()
-        # myapp.debug("environment get_vehicle_observations time taken:", end_time - start_time)
-        # start_time = time.time()
-        
+        observation_taken_time += time.time() - start_time
+
         # check for termination
         if self._time_slots.is_end():
             self._reset_next_step = True
-            return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
+            return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation),  transform_action_array_to_actions_taken_time, \
+                compute_baseline_information_objects_taken_time, \
+                compute_baseline_reward_taken_time, \
+                compute_vehicle_information_objects_taken_time, \
+                compute_vehicle_reward_taken_time, \
+                reward_history_taken_time, \
+                update_information_objects_taken_time, \
+                observation_taken_time
+                # baseline_reward_compute_the_timeliness_of_views_times, \
+                # baseline_reward_compute_the_consistency_of_views_times, \
+                # baseline_reward_compute_the_redundancy_of_views_times, \
+                # baseline_reward_compute_the_cost_of_views_times, \
+                # baseline_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times, \
+                # baseline_reward_compute_the_age_of_view_times, \
+                # vehicle_reward_compute_the_timeliness_of_views_times, \
+                # vehicle_reward_compute_the_consistency_of_views_times, \
+                # vehicle_reward_compute_the_redundancy_of_views_times, \
+                # vehicle_reward_compute_the_cost_of_views_times, \
+                # vehicle_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times, \
+                # vehicle_reward_compute_the_age_of_view_times
+            
         self._time_slots.add_time()
-        return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
+        return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation), transform_action_array_to_actions_taken_time, \
+            compute_baseline_information_objects_taken_time, \
+            compute_baseline_reward_taken_time, \
+            compute_vehicle_information_objects_taken_time, \
+            compute_vehicle_reward_taken_time, \
+            reward_history_taken_time, \
+            update_information_objects_taken_time, \
+            observation_taken_time
+            # baseline_reward_compute_the_timeliness_of_views_times, \
+            # baseline_reward_compute_the_consistency_of_views_times, \
+            # baseline_reward_compute_the_redundancy_of_views_times, \
+            # baseline_reward_compute_the_cost_of_views_times, \
+            # baseline_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times, \
+            # baseline_reward_compute_the_age_of_view_times, \
+            # vehicle_reward_compute_the_timeliness_of_views_times, \
+            # vehicle_reward_compute_the_consistency_of_views_times, \
+            # vehicle_reward_compute_the_redundancy_of_views_times, \
+            # vehicle_reward_compute_the_cost_of_views_times, \
+            # vehicle_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times, \
+            # vehicle_reward_compute_the_age_of_view_times
 
     def transform_action_array_to_actions(self, action: np.ndarray) -> Tuple[int, List[List[int]], List[vehicleAction], edgeAction]:
         """Transform the action array to the actions of vehicles and the edge node.
@@ -377,11 +431,6 @@ class vehicularNetworkEnv(baseEnvironment):
         Returns:
             actions: the actions of vehicles and the edge node.
         """ 
-        start_time = time.time()
-        first_start_time = start_time
-        myapp.debug("*" * 32)
-        myapp.debug("transform")
-        myapp.debug(f"transform_action_array_to_actions start_time: {start_time}")
         
         vhielce_action_array = action[0: self._config.vehicle_number * self._vehicle_action_size]
         edge_action_array = action[self._config.vehicle_number * self._vehicle_action_size:]
@@ -391,7 +440,7 @@ class vehicularNetworkEnv(baseEnvironment):
             raise ValueError('The length of the action is not correct.')
 
         vehicle_actions: List[vehicleAction] = [
-            generate_vehicle_action_from_np_array(
+            self.generate_vehicle_action_from_np_array(
                     vehicle_index=i,
                     now_time=self._time_slots.now(),
                     vehicle_list=self._vehicle_list,
@@ -399,8 +448,6 @@ class vehicularNetworkEnv(baseEnvironment):
                     sensed_information_number=self._config.sensed_information_number,
                     network_output=vhielce_action_array[i * self._vehicle_action_size: (i + 1) * self._vehicle_action_size],
                     white_gaussian_noise=self._config.white_gaussian_noise,
-                    mean_channel_fading_gain=self._config.mean_channel_fading_gain,
-                    second_moment_channel_fading_gain=self._config.second_moment_channel_fading_gain,
                     edge_location=self._edge_node.get_edge_location(),
                     path_loss_exponent=self._config.path_loss_exponent,
                     SNR_target_low_bound=self._config.SNR_target_low_bound,
@@ -410,27 +457,16 @@ class vehicularNetworkEnv(baseEnvironment):
             ) for i in range(self._config.vehicle_number)
         ]
         
-        myapp.debug("*" * 32)
-        end_time = time.time()
-        myapp.debug(f"vehicleAction.generate_from_np_array time taken: {end_time - start_time}")
-        start_time = time.time()
-        
-        edge_action: edgeAction = generate_edge_action_from_np_array(
+        edge_action: edgeAction = self.generate_edge_action_from_np_array(
             now_time=self._time_slots.now(),
             edge_node=self._edge_node,
             action_time=self._time_slots.now(),
             network_output=edge_action_array,
             vehicle_number=self._config.vehicle_number,
         )
-        myapp.debug("*" * 32)
-        end_time = time.time()
-        myapp.debug(f"edgeAction.generate_from_np_array time taken: {end_time - start_time}")
-        start_time = time.time()
         
         views_required_number: int = self._information_requirements.get_views_required_number_at_now(self._time_slots.now())
         information_type_required_by_views_at_now: List[List[int]] = self._information_requirements.get_information_type_required_by_views_at_now_at_now(self._time_slots.now())
-
-
         
         return views_required_number, information_type_required_by_views_at_now, vehicle_actions, edge_action
 
@@ -534,8 +570,16 @@ class vehicularNetworkEnv(baseEnvironment):
         self,
         information_objects_ordered_by_views: List[List[informationPacket]],
         vehicle_actions: List[vehicleAction],
-        vehicle_index: int = -1) -> float:
+        vehicle_index: int = -1):
+        
+        compute_the_timeliness_of_views_time = 0
+        compute_the_consistency_of_views_time = 0
+        compute_the_redundancy_of_views_time = 0
+        compute_the_cost_of_views_time = 0
+        normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time = 0
+        compute_the_age_of_view_time = 0
 
+        start_time = time.time()
         """Compute the timeliness of views"""
         timeliness_views = []
         for information_objects in information_objects_ordered_by_views:
@@ -555,8 +599,13 @@ class vehicularNetworkEnv(baseEnvironment):
             timeliness = sum(timeliness_of_vehicles)
             if not np.isinf(timeliness) and not np.isnan(timeliness):
                 timeliness_views.append(timeliness)
-                self._timeliness_views_history.append(timeliness)
-
+                if timeliness > self._max_timeliness:
+                    self._max_timeliness = timeliness
+                if timeliness < self._min_timeliness:
+                    self._min_timeliness = timeliness
+        compute_the_timeliness_of_views_time = time.time() - start_time
+        
+        start_time = time.time()
         """Compute the consistency of views"""
         consistency_views = []
         for information_objects in information_objects_ordered_by_views:
@@ -566,8 +615,13 @@ class vehicularNetworkEnv(baseEnvironment):
             consistency = max(updating_moments_of_informations) - min(updating_moments_of_informations)
             if not np.isinf(consistency) and not np.isnan(consistency):
                 consistency_views.append(consistency)
-                self._consistency_views_history.append(consistency)
+                if consistency > self._max_consistency:
+                    self._max_consistency = consistency
+                if consistency < self._min_consistency:
+                    self._min_consistency = consistency
+        compute_the_consistency_of_views_time = time.time() - start_time
 
+        start_time = time.time()
         """Compute the redundancy of views"""
         redundancy_views = []
         for information_objects in information_objects_ordered_by_views:
@@ -582,8 +636,13 @@ class vehicularNetworkEnv(baseEnvironment):
                     redundancy += sum(redundancy_list[i]) - 1
             if not np.isinf(redundancy) and not np.isnan(redundancy):
                 redundancy_views.append(redundancy)
-                self._redundancy_views_history.append(redundancy)
-
+                if redundancy > self._max_redundancy:
+                    self._max_redundancy = redundancy
+                if redundancy < self._min_redundancy:
+                    self._min_redundancy = redundancy
+        compute_the_redundancy_of_views_time = time.time() - start_time
+        
+        start_time = time.time()
         """Compute the cost of view"""
         cost_views = []
         for information_objects in information_objects_ordered_by_views:
@@ -605,8 +664,13 @@ class vehicularNetworkEnv(baseEnvironment):
             cost = sum(cost_of_vehicles)
             if not np.isinf(cost) and not np.isnan(cost):
                 cost_views.append(cost)
-                self._cost_views_history.append(cost)
-
+                if cost > self._max_cost:
+                    self._max_cost = cost
+                if cost < self._min_cost:
+                    self._min_cost = cost
+        compute_the_cost_of_views_time = time.time() - start_time
+        
+        start_time = time.time()
         """Normalize the timeliness, consistency, redundancy, and cost of views"""
         timeliness_views_normalized = []
         consistency_views_normalized = []
@@ -614,62 +678,43 @@ class vehicularNetworkEnv(baseEnvironment):
         cost_views_normalized = []
 
         for i in range(len(timeliness_views)):
-            if (max(self._timeliness_views_history) - min(self._timeliness_views_history)) != 0 and \
-                not np.isnan(timeliness_views[i] - min(self._timeliness_views_history)) / (max(self._timeliness_views_history) - min(self._timeliness_views_history)):
-                # myapp.dubug("(timeliness_views[i] - min(self._timeliness_views_history)) / (max(self._timeliness_views_history) - min(self._timeliness_views_history)):")
-                # myapp.dubug((timeliness_views[i] - min(self._timeliness_views_history)) / (max(self._timeliness_views_history) - min(self._timeliness_views_history)))
-                # myapp.dubug(timeliness_views[i])
-                # myapp.dubug(min(self._timeliness_views_history))
-                # myapp.dubug(max(self._timeliness_views_history))
-                # myapp.dubug("\n")
+            if self._max_timeliness != -1 and self._min_timeliness != 100000000 and (self._max_timeliness - self._min_timeliness) != 0 and  \
+                not np.isnan(timeliness_views[i] - self._min_timeliness) / (self._max_timeliness - self._min_timeliness):
+
                 timeliness_views_normalized.append(
-                    (timeliness_views[i] - min(self._timeliness_views_history)) / (max(self._timeliness_views_history) - min(self._timeliness_views_history))
+                    (timeliness_views[i] - self._min_timeliness) / (self._max_timeliness - self._min_timeliness)
                 )
             else:
                 timeliness_views_normalized.append(-1)
             
-            if (max(self._consistency_views_history) - min(self._consistency_views_history)) != 0 and \
-                not np.isnan(consistency_views[i] - min(self._consistency_views_history)) / (max(self._consistency_views_history) - min(self._consistency_views_history)):
-                # myapp.dubug("(consistency_views[i] - min(self._consistency_views_history)) / (max(self._consistency_views_history) - min(self._consistency_views_history)):")
-                # myapp.dubug((consistency_views[i] - min(self._consistency_views_history)) / (max(self._consistency_views_history) - min(self._consistency_views_history)))
-                # myapp.dubug(consistency_views[i])
-                # myapp.dubug(min(self._consistency_views_history))
-                # myapp.dubug(max(self._consistency_views_history))
-                # myapp.dubug("\n")
+            if self._max_consistency != -1 and self._min_consistency != 100000000 and (self._max_consistency - self._min_consistency) != 0 and \
+                not np.isnan(consistency_views[i] - self._min_consistency) / (self._max_consistency - self._min_consistency):
+
                 consistency_views_normalized.append(
-                    (consistency_views[i] - min(self._consistency_views_history)) / (max(self._consistency_views_history) - min(self._consistency_views_history))
+                    (consistency_views[i] - self._min_consistency) / (self._max_consistency - self._min_consistency)
                 )
             else:
                 consistency_views_normalized.append(-1)
             
-            if (max(self._redundancy_views_history) - min(self._redundancy_views_history)) != 0 and \
-                not np.isnan((redundancy_views[i] - min(self._redundancy_views_history)) / (max(self._redundancy_views_history) - min(self._redundancy_views_history))):
-                # myapp.dubug("(redundancy_views[i] - min(self._redundancy_views_history)) / (max(self._redundancy_views_history) - min(self._redundancy_views_history)):")
-                # myapp.dubug((redundancy_views[i] - min(self._redundancy_views_history)) / (max(self._redundancy_views_history) - min(self._redundancy_views_history)))
-                # myapp.dubug(redundancy_views[i])
-                # myapp.dubug(min(self._redundancy_views_history))
-                # myapp.dubug(max(self._redundancy_views_history))
-                # myapp.dubug("\n")
+            if self._max_redundancy != -1 and self._min_redundancy != 100000000 and (self._max_redundancy - self._min_redundancy) != 0 and \
+                not np.isnan((redundancy_views[i] - self._min_redundancy) / (self._max_redundancy - self._min_redundancy)):
+
                 redundancy_views_normalized.append(
-                    (redundancy_views[i] - min(self._redundancy_views_history)) / (max(self._redundancy_views_history) - min(self._redundancy_views_history))
+                    (redundancy_views[i] - self._min_redundancy) / (self._max_redundancy - self._min_redundancy)
                 )
             else:
                 redundancy_views_normalized.append(-1)
 
-            if (max(self._cost_views_history) - min(self._cost_views_history)) != 0 and \
-                not np.isnan(cost_views[i] - min(self._cost_views_history)) / (max(self._cost_views_history) - min(self._cost_views_history)):
-                # myapp.dubug("(cost_views[i] - min(self._cost_views_history)) / (max(self._cost_views_history) - min(self._cost_views_history)):")
-                # myapp.dubug((cost_views[i] - min(self._cost_views_history)) / (max(self._cost_views_history) - min(self._cost_views_history)))
-                # myapp.dubug(cost_views[i])
-                # myapp.dubug(min(self._cost_views_history))
-                # myapp.dubug(max(self._cost_views_history))
-                # myapp.dubug("\n")
+            if self._max_cost != -1 and self._min_cost != 100000000 and (self._max_cost - self._min_cost) != 0 and \
+                not np.isnan(cost_views[i] - self._min_cost) / (self._max_cost - self._min_cost):
                 cost_views_normalized.append(
-                    (cost_views[i] - min(self._cost_views_history)) / (max(self._cost_views_history) - min(self._cost_views_history))
+                    (cost_views[i] - self._min_cost) / (self._max_cost - self._min_cost)
                 )
             else:
                 cost_views_normalized.append(-1)
-
+        normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time = time.time() - start_time
+        
+        start_time = time.time()
         """Compute the age of view."""
         age_of_view = []
         for i in range(len(timeliness_views_normalized)):
@@ -693,7 +738,15 @@ class vehicularNetworkEnv(baseEnvironment):
                 now=int(self._time_slots.now()),
                 reward=reward,
             )
-
+        compute_the_age_of_view_time = time.time() - start_time
+        # print("reward:", reward)
+        # print("compute_the_timeliness_of_views_time:", compute_the_timeliness_of_views_time)
+        # print("compute_the_consistency_of_views_time:", compute_the_consistency_of_views_time)
+        # print("compute_the_redundancy_of_views_time:", compute_the_redundancy_of_views_time)
+        # print("compute_the_cost_of_views_time:", compute_the_cost_of_views_time)
+        # print("normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time:", normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time)
+        # print("compute_the_age_of_view_time:", compute_the_age_of_view_time)
+        
         return reward
 
     """Define the observation spaces of vehicle."""
@@ -959,329 +1012,280 @@ class vehicularNetworkEnv(baseEnvironment):
             string += "\n"
         return string
 
-def cover_dBm_to_W(dBm: float) -> float:
-    return np.power(10, (dBm / 10)) / 1000
+    def compute_SNR(
+        self, 
+        white_gaussian_noise: int,
+        channel_fading_gain: float,
+        distance: float,
+        path_loss_exponent: int,
+        transmission_power: float) -> float:
+        """
+        Compute the SNR of a vehicle transmission
+        Args:
+            white_gaussian_noise: the white gaussian noise of the channel, e.g., -70 dBm
+            channel_fading_gain: the channel fading gain, e.g., Gaussion distribution with mean 2 and variance 0.4
+            distance: the distance between the vehicle and the edge, e.g., 300 meters
+            path_loss_exponent: the path loss exponent, e.g., 3
+            transmission_power: the transmission power of the vehicle, e.g., 10 mW
+        Returns:
+            SNR: the SNR of the transmission
+        """
+        return (1.0 / np.power(10, (white_gaussian_noise / 10)) / 1000) * \
+            np.power(np.abs(channel_fading_gain), 2) * \
+            1.0 / (np.power(distance, path_loss_exponent)) * \
+            transmission_power / 1000
 
-def cover_mW_to_W(mW: float) -> float:
-    return mW / 1000
+    def compute_successful_tansmission_probability(
+        self, 
+        white_gaussian_noise: int,
+        distance: float,
+        path_loss_exponent: int,
+        transmission_power: float,
+        SNR_target: float) -> float:
+        """
+        Compute the sussessful transmission probability of the vehicle to the edge
+        Args:
+            white_gaussian_noise: the white gaussian noise of the channel
+            channel_fading_gains: the channel fading gains
+            distance: the distance between the vehicle and the edge
+            path_loss_exponent: the path loss exponent
+            transmission_power: the transmission power of the vehicle
+            SNR_target: the target SNR
+        Returns:
+            sussessful_tansmission_probability: the sussessful transmission probability of the vehicle to the edge
+        """
+        hash_id = str(hash(str(distance) + str(transmission_power)))
+        if self._successful_tansmission_probability.get(hash_id) is None:
+            successful_transmission_number = 0
+            total_number = 0
+            for channel_fading_gain in self._channel_fading_gains:
+                total_number += 1
+                SNR = self.compute_SNR(
+                    white_gaussian_noise=white_gaussian_noise,
+                    channel_fading_gain=channel_fading_gain,
+                    distance=distance,
+                    path_loss_exponent=path_loss_exponent,
+                    transmission_power=transmission_power
+                )
+                if SNR != 0 and 10 * np.log10(SNR) >= SNR_target:
+                    successful_transmission_number += 1
+            self._successful_tansmission_probability[hash_id] = successful_transmission_number / total_number
+            return successful_transmission_number / total_number
+        else:
+            return self._successful_tansmission_probability[hash_id]
 
-def cover_ratio_to_dB(ratio: float) -> float:
-    return 10 * np.log10(ratio)
+    def generate_channel_fading_gain(self, mean_channel_fading_gain, second_moment_channel_fading_gain, size: int = 1):
+        channel_fading_gain = np.random.normal(loc=mean_channel_fading_gain, scale=second_moment_channel_fading_gain, size=size)
+        return channel_fading_gain
 
-def compute_SNR(
-    white_gaussian_noise: int,
-    channel_fading_gain: float,
-    distance: float,
-    path_loss_exponent: int,
-    transmission_power: float) -> float:
-    """
-    Compute the SNR of a vehicle transmission
-    Args:
-        white_gaussian_noise: the white gaussian noise of the channel, e.g., -70 dBm
-        channel_fading_gain: the channel fading gain, e.g., Gaussion distribution with mean 2 and variance 0.4
-        distance: the distance between the vehicle and the edge, e.g., 300 meters
-        path_loss_exponent: the path loss exponent, e.g., 3
-        transmission_power: the transmission power of the vehicle, e.g., 10 mW
-    Returns:
-        SNR: the SNR of the transmission
-    """
-    return (1.0 / cover_dBm_to_W(white_gaussian_noise)) * \
-        np.power(np.abs(channel_fading_gain), 2) * \
-        1.0 / (np.power(distance, path_loss_exponent)) * \
-        cover_mW_to_W(transmission_power)
+    def get_minimum_transmission_power(
+        self, 
+        white_gaussian_noise: int,
+        distance: float,
+        path_loss_exponent: int,
+        transmission_power: float,
+        SNR_target: float,
+        probabiliity_threshold: float) -> float:
+        """
+        Get the minimum transmission power of the vehicle to the edge
+        Args:
+            white_gaussian_noise: the white gaussian noise of the channel
+            mean_channel_fading_gain: the mean channel fading gain
+            second_moment_channel_fading_gain: the second moment channel fading gain
+            distance: the distance between the vehicle and the edge
+            path_loss_exponent: the path loss exponent
+            transmission_power: the transmission power of the vehicle
+            SNR_target: the target SNR
+            probabiliity_threshold: the probability threshold
+        Returns:
+            minimum_transmission_power: the minimum transmission power of the vehicle to the edge
+        """
 
-def compute_successful_tansmission_probability(
-    white_gaussian_noise: int,
-    channel_fading_gains: np.ndarray,
-    distance: float,
-    path_loss_exponent: int,
-    transmission_power: float,
-    SNR_target: float) -> float:
-    """
-    Compute the sussessful transmission probability of the vehicle to the edge
-    Args:
-        white_gaussian_noise: the white gaussian noise of the channel
-        channel_fading_gains: the channel fading gains
-        distance: the distance between the vehicle and the edge
-        path_loss_exponent: the path loss exponent
-        transmission_power: the transmission power of the vehicle
-        SNR_target: the target SNR
-    Returns:
-        sussessful_tansmission_probability: the sussessful transmission probability of the vehicle to the edge
-    """
-    successful_transmission_number = 0
-    total_number = 0
-    for channel_fading_gain in channel_fading_gains:
-        total_number += 1
-        SNR = compute_SNR(
+        minimum_transmission_power = transmission_power
+        minimum_power = 0
+        maximum_power = transmission_power
+        while_flag = True
+        mid = minimum_power
+        mid_probabiliity = self.compute_successful_tansmission_probability(
             white_gaussian_noise=white_gaussian_noise,
-            channel_fading_gain=channel_fading_gain,
-            distance=distance,
-            path_loss_exponent=path_loss_exponent,
-            transmission_power=transmission_power
-        )
-        if cover_ratio_to_dB(SNR) >= SNR_target:
-            successful_transmission_number += 1
-    return successful_transmission_number / total_number
-
-def generate_channel_fading_gain(mean_channel_fading_gain, second_moment_channel_fading_gain, size: int = 1):
-    channel_fading_gain = np.random.normal(loc=mean_channel_fading_gain, scale=second_moment_channel_fading_gain, size=size)
-    return channel_fading_gain
-
-def get_minimum_transmission_power(
-    white_gaussian_noise: int,
-    mean_channel_fading_gain: float,
-    second_moment_channel_fading_gain: float,
-    distance: float,
-    path_loss_exponent: int,
-    transmission_power: float,
-    SNR_target: float,
-    probabiliity_threshold: float) -> float:
-    """
-    Get the minimum transmission power of the vehicle to the edge
-    Args:
-        white_gaussian_noise: the white gaussian noise of the channel
-        mean_channel_fading_gain: the mean channel fading gain
-        second_moment_channel_fading_gain: the second moment channel fading gain
-        distance: the distance between the vehicle and the edge
-        path_loss_exponent: the path loss exponent
-        transmission_power: the transmission power of the vehicle
-        SNR_target: the target SNR
-        probabiliity_threshold: the probability threshold
-    Returns:
-        minimum_transmission_power: the minimum transmission power of the vehicle to the edge
-    """
-
-    minimum_transmission_power = transmission_power
-    minimum_power = 0
-    maximum_power = transmission_power
-    channel_fading_gains = generate_channel_fading_gain(
-        mean_channel_fading_gain=mean_channel_fading_gain,
-        second_moment_channel_fading_gain=second_moment_channel_fading_gain,
-        size=100
-    )
-    while_flag = True
-    mid = minimum_power
-    mid_probabiliity = compute_successful_tansmission_probability(
-        white_gaussian_noise=white_gaussian_noise,
-        channel_fading_gains=channel_fading_gains,
-        distance=distance,
-        path_loss_exponent=path_loss_exponent,
-        transmission_power=mid,
-        SNR_target=SNR_target
-    )
-    if mid_probabiliity > probabiliity_threshold:
-        minimum_transmission_power = mid
-        while_flag = False
-    
-    mid = maximum_power
-    mid_probabiliity = compute_successful_tansmission_probability(
-        white_gaussian_noise=white_gaussian_noise,
-        channel_fading_gains=channel_fading_gains,
-        distance=distance,
-        path_loss_exponent=path_loss_exponent,
-        transmission_power=mid,
-        SNR_target=SNR_target
-    )
-    if mid_probabiliity <= probabiliity_threshold:
-        minimum_transmission_power = mid
-        while_flag = False
-    
-    while while_flag:
-        
-        # myapp.debug("*" * 32)
-        # myapp.debug(f"minimum_power: {minimum_power}")
-        # myapp.debug(f"maximum_power: {maximum_power}")
-        mid = (minimum_power + maximum_power) / 2
-        # myapp.debug(f"mid: {mid}")
-        # myapp.debug("*" * 32)
-        
-        mid_plus = mid + 0.01
-        mid_probabiliity = compute_successful_tansmission_probability(
-            white_gaussian_noise=white_gaussian_noise,
-            channel_fading_gains=channel_fading_gains,
             distance=distance,
             path_loss_exponent=path_loss_exponent,
             transmission_power=mid,
             SNR_target=SNR_target
         )
-        mid_plus_probabiliity = compute_successful_tansmission_probability(
+        if mid_probabiliity > probabiliity_threshold:
+            minimum_transmission_power = mid
+            while_flag = False
+        
+        mid = maximum_power
+        mid_probabiliity = self.compute_successful_tansmission_probability(
             white_gaussian_noise=white_gaussian_noise,
-            channel_fading_gains=channel_fading_gains,
             distance=distance,
             path_loss_exponent=path_loss_exponent,
-            transmission_power=mid_plus,
+            transmission_power=mid,
             SNR_target=SNR_target
         )
-        # myapp.debug(f"mid_probabiliity: {mid_probabiliity}")
-        # myapp.debug(f"probabiliity_threshold: {probabiliity_threshold}")
-        # myapp.debug(f"mid_plus_probabiliity: {mid_plus_probabiliity}")
-        # myapp.debug("*" * 32)
-        if minimum_power > maximum_power:
-            minimum_transmission_power = (minimum_power + maximum_power) / 2
-            break
-        if mid_probabiliity <= probabiliity_threshold and mid_plus_probabiliity >= probabiliity_threshold:
+        if mid_probabiliity <= probabiliity_threshold:
             minimum_transmission_power = mid
-            break
-        else:
-            if mid_probabiliity < probabiliity_threshold:
-                minimum_power = mid
-            else:
-                maximum_power = mid
-
-    return minimum_transmission_power
-
-
-def rescale_the_list_to_small_than_one(list_to_rescale: List[float], is_sum_equal_one: Optional[bool] = False) -> List[float]:
-    """ rescale the list small than one.
-    Args:
-        list_to_rescale: list to rescale.
-    Returns:
-        rescaled list.
-    """
-    if is_sum_equal_one:
-        maximum_sum = sum(list_to_rescale)
-    else:
-        maximum_sum = sum(list_to_rescale) + 0.00001
-    return [x / maximum_sum for x in list_to_rescale]   # rescale the list to small than one.
-
-def generate_vehicle_action_from_np_array(
-    now_time: int,
-    vehicle_index: int,
-    vehicle_list: vehicleList,
-    information_list: informationList,
-    sensed_information_number: int,
-    network_output: np.ndarray,
-    white_gaussian_noise: int,
-    mean_channel_fading_gain: float,
-    second_moment_channel_fading_gain: float,
-    edge_location: location,
-    path_loss_exponent: int,
-    SNR_target_low_bound: float,
-    SNR_target_up_bound: float,
-    probabiliity_threshold: float,
-    action_time: int):
-    """ generate the vehicle action from the neural network output.
-
-    self._vehicle_action_size = self._sensed_information_number + self._sensed_information_number + \
-        self._sensed_information_number + 1
-        # sensed_information + sensing_frequencies + uploading_priorities + transmission_power
-
-    Args:
-        network_output: the output of the neural network.
-    Returns:
-        the vehicle action.
-    """
-    start_time = time.time()
-    myapp.debug("*" * 32)
-    myapp.debug(f"generate_vehicle_action_from_np_array start_time: {start_time}")
-    
-    sensed_information = np.zeros(sensed_information_number)
-    sensing_frequencies = np.zeros(sensed_information_number)
-    uploading_priorities = np.zeros(sensed_information_number)
-
-    for index, values in enumerate(network_output[:sensed_information_number]):
-        if values > 0.5:
-            sensed_information[index] = 1
-    frequencies = network_output[sensed_information_number: 2*sensed_information_number]
-    frequencies = rescale_the_list_to_small_than_one(frequencies)
-    for index, values in enumerate(frequencies):
-        if sensed_information[index] == 1:
-            sensing_frequencies[index] = (values - 0.01) / information_list.get_mean_service_time_by_vehicle_and_type(
-                vehicle_index=vehicle_index,
-                data_type_index=vehicle_list.get_vehicle(vehicle_index).get_information_type_canbe_sensed(index)
+            while_flag = False
+        
+        while while_flag:
+            mid = (minimum_power + maximum_power) / 2
+            mid_plus = mid + 0.1
+            mid_probabiliity = self.compute_successful_tansmission_probability(
+                white_gaussian_noise=white_gaussian_noise,
+                distance=distance,
+                path_loss_exponent=path_loss_exponent,
+                transmission_power=mid,
+                SNR_target=SNR_target
             )
-    for index, values in enumerate(network_output[2*sensed_information_number: 3*sensed_information_number]):
-        if sensed_information[index] == 1:
-            uploading_priorities[index] = values
+            mid_plus_probabiliity = self.compute_successful_tansmission_probability(
+                white_gaussian_noise=white_gaussian_noise,
+                distance=distance,
+                path_loss_exponent=path_loss_exponent,
+                transmission_power=mid_plus,
+                SNR_target=SNR_target
+            )
 
-    sensed_information = list(sensed_information)
-    sensing_frequencies = list(sensing_frequencies)
-    uploading_priorities = list(uploading_priorities)
-    
-    myapp.debug("*" * 32)
-    end_time = time.time()
-    myapp.debug(f"generate_vehicle_action_from_np_array step 1 time taken: {end_time - start_time}")
-    start_time = time.time()
+            if minimum_power > maximum_power:
+                minimum_transmission_power = (minimum_power + maximum_power) / 2
+                break
+            if mid_probabiliity <= probabiliity_threshold and mid_plus_probabiliity >= probabiliity_threshold:
+                minimum_transmission_power = mid
+                break
+            else:
+                if mid_probabiliity < probabiliity_threshold:
+                    minimum_power = mid
+                else:
+                    maximum_power = mid
 
-    SNR_target = np.random.random() * (SNR_target_up_bound - SNR_target_low_bound) + SNR_target_low_bound
-
-    minimum_transmission_power = get_minimum_transmission_power(
-        white_gaussian_noise=white_gaussian_noise,
-        mean_channel_fading_gain=mean_channel_fading_gain,
-        second_moment_channel_fading_gain=second_moment_channel_fading_gain,
-        distance=vehicle_list.get_vehicle(vehicle_index).get_vehicle_location(now_time).get_distance(edge_location),
-        path_loss_exponent=path_loss_exponent,
-        transmission_power=vehicle_list.get_vehicle(vehicle_index).get_transmission_power(),
-        SNR_target=SNR_target,
-        probabiliity_threshold=probabiliity_threshold
-    )
-    
-    myapp.debug("*" * 32)
-    end_time = time.time()
-    myapp.debug(f"generate_vehicle_action_from_np_array step 2 time taken: {end_time - start_time}")
-    start_time = time.time()
-
-    transmisson_power = minimum_transmission_power + network_output[-1] * \
-        (vehicle_list.get_vehicle(vehicle_index).get_transmission_power() - minimum_transmission_power)
-    
-    myapp.debug("*" * 32)
-    end_time = time.time()
-    myapp.debug(f"generate_vehicle_action_from_np_array step 3 time taken: {end_time - start_time}")
-    start_time = time.time()
-    
-    vehicle_action = vehicleAction(
-        vehicle_index=vehicle_index,
-        now_time=now_time,
-
-        sensed_information=sensed_information,
-        sensing_frequencies=sensing_frequencies,
-        uploading_priorities=uploading_priorities,
-        transmission_power=transmisson_power,
-
-        action_time=action_time,
-    )
-
-    if not vehicle_action.check_action(now_time, vehicle_list):
-        raise ValueError("The vehicle action is not valid.")
-    
-    myapp.debug("*" * 32)
-    end_time = time.time()
-    myapp.debug(f"generate_vehicle_action_from_np_array step 4 time taken: {end_time - start_time}")
-    start_time = time.time()
-    
-    return vehicle_action
+        return minimum_transmission_power
 
 
-def generate_edge_action_from_np_array(
-    now_time: int,
-    edge_node: edge,
-    action_time: int,
-    network_output: np.ndarray,
-    vehicle_number: int):
-    """ generate the edge action from the neural network output.
-    Args:
-        network_output: the output of the neural network.
-    Returns:
-        the edge action.
-    """
-    bandwidth_allocation = np.zeros((vehicle_number,))
-    bandwidth = rescale_the_list_to_small_than_one(list(network_output))
-    for index, values in enumerate(bandwidth):
-        bandwidth_allocation[index] = values * edge_node.get_bandwidth()
+    def rescale_the_list_to_small_than_one(self, list_to_rescale: List[float], is_sum_equal_one: Optional[bool] = False) -> List[float]:
+        """ rescale the list small than one.
+        Args:
+            list_to_rescale: list to rescale.
+        Returns:
+            rescaled list.
+        """
+        if is_sum_equal_one:
+            maximum_sum = sum(list_to_rescale)
+        else:
+            maximum_sum = sum(list_to_rescale) + 0.00001
+        return [x / maximum_sum for x in list_to_rescale]   # rescale the list to small than one.
 
-    edge_action = edgeAction(
-        edge=edge_node,
-        now_time=now_time,
-        vehicle_number=vehicle_number,
-        bandwidth_allocation=bandwidth_allocation,
-        action_time=action_time
-    )
+    def generate_vehicle_action_from_np_array(
+        self, 
+        now_time: int,
+        vehicle_index: int,
+        vehicle_list: vehicleList,
+        information_list: informationList,
+        sensed_information_number: int,
+        network_output: np.ndarray,
+        white_gaussian_noise: int,
+        edge_location: location,
+        path_loss_exponent: int,
+        SNR_target_low_bound: float,
+        SNR_target_up_bound: float,
+        probabiliity_threshold: float,
+        action_time: int):
+        """ generate the vehicle action from the neural network output.
 
-    if not edge_action.check_action(now_time):
-        raise ValueError("the edge action is invalid.")
+        self._vehicle_action_size = self._sensed_information_number + self._sensed_information_number + \
+            self._sensed_information_number + 1
+            # sensed_information + sensing_frequencies + uploading_priorities + transmission_power
 
-    return edge_action
+        Args:
+            network_output: the output of the neural network.
+        Returns:
+            the vehicle action.
+        """
+        sensed_information = np.zeros(sensed_information_number)
+        sensing_frequencies = np.zeros(sensed_information_number)
+        uploading_priorities = np.zeros(sensed_information_number)
+
+        for index, values in enumerate(network_output[:sensed_information_number]):
+            if values > 0.5:
+                sensed_information[index] = 1
+        frequencies = network_output[sensed_information_number: 2*sensed_information_number]
+        frequencies = self.rescale_the_list_to_small_than_one(frequencies)
+        for index, values in enumerate(frequencies):
+            if sensed_information[index] == 1:
+                sensing_frequencies[index] = (values - 0.01) / information_list.get_mean_service_time_by_vehicle_and_type(
+                    vehicle_index=vehicle_index,
+                    data_type_index=vehicle_list.get_vehicle(vehicle_index).get_information_type_canbe_sensed(index)
+                )
+        for index, values in enumerate(network_output[2*sensed_information_number: 3*sensed_information_number]):
+            if sensed_information[index] == 1:
+                uploading_priorities[index] = values
+
+        sensed_information = list(sensed_information)
+        sensing_frequencies = list(sensing_frequencies)
+        uploading_priorities = list(uploading_priorities)
+
+        SNR_target = np.random.random() * (SNR_target_up_bound - SNR_target_low_bound) + SNR_target_low_bound
+
+        minimum_transmission_power = self.get_minimum_transmission_power(
+            white_gaussian_noise=white_gaussian_noise,
+            distance=vehicle_list.get_vehicle(vehicle_index).get_vehicle_location(now_time).get_distance(edge_location),
+            path_loss_exponent=path_loss_exponent,
+            transmission_power=vehicle_list.get_vehicle(vehicle_index).get_transmission_power(),
+            SNR_target=SNR_target,
+            probabiliity_threshold=probabiliity_threshold
+        )
+
+        transmisson_power = minimum_transmission_power + network_output[-1] * \
+            (vehicle_list.get_vehicle(vehicle_index).get_transmission_power() - minimum_transmission_power)
+        
+        vehicle_action = vehicleAction(
+            vehicle_index=vehicle_index,
+            now_time=now_time,
+
+            sensed_information=sensed_information,
+            sensing_frequencies=sensing_frequencies,
+            uploading_priorities=uploading_priorities,
+            transmission_power=transmisson_power,
+
+            action_time=action_time,
+        )
+
+        if not vehicle_action.check_action(now_time, vehicle_list):
+            raise ValueError("The vehicle action is not valid.")
+        
+        return vehicle_action
+
+
+    def generate_edge_action_from_np_array(
+        self, 
+        now_time: int,
+        edge_node: edge,
+        action_time: int,
+        network_output: np.ndarray,
+        vehicle_number: int):
+        """ generate the edge action from the neural network output.
+        Args:
+            network_output: the output of the neural network.
+        Returns:
+            the edge action.
+        """
+        bandwidth_allocation = np.zeros((vehicle_number,))
+        bandwidth = self.rescale_the_list_to_small_than_one(list(network_output))
+        for index, values in enumerate(bandwidth):
+            bandwidth_allocation[index] = values * edge_node.get_bandwidth()
+
+        edge_action = edgeAction(
+            edge=edge_node,
+            now_time=now_time,
+            vehicle_number=vehicle_number,
+            bandwidth_allocation=bandwidth_allocation,
+            action_time=action_time
+        )
+
+        if not edge_action.check_action(now_time):
+            raise ValueError("the edge action is invalid.")
+
+        return edge_action
 
 
 Array = specs.Array

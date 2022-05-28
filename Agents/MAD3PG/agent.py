@@ -65,9 +65,9 @@ class D3PGConfig:
     vehicle_critic_optimizer: Optional[snt.Optimizer] = None
     edge_policy_optimizer: Optional[snt.Optimizer] = None
     edge_critic_optimizer: Optional[snt.Optimizer] = None
-    min_replay_size: int = 1000
+    min_replay_size: int = 100000
     max_replay_size: int = 1000000
-    samples_per_insert: Optional[float] = 16.0
+    samples_per_insert: Optional[float] = 1.0
     n_step: int = 5
     sigma: float = 0.3
     clipping: bool = True
@@ -403,7 +403,7 @@ class MultiAgentDistributedDDPG:
         networks: Optional[D3PGNetworks] = None,
         num_actors: int = 1,
         num_caches: int = 0,
-        max_actor_steps: Optional[int] = 5000,
+        max_actor_steps: Optional[int] = None,
         log_every: float = 30.0,
     ):
         """Initialize the MAD3PG agent."""
@@ -577,8 +577,8 @@ class MultiAgentDistributedDDPG:
         with program.group('learner'):
             learner = program.add_node(lp.CourierNode(self.learner, replay, counter))
 
-        with program.group('evaluator'):
-            program.add_node(lp.CourierNode(self.evaluator, learner, counter))
+        # with program.group('evaluator'):
+        #     program.add_node(lp.CourierNode(self.evaluator, learner, counter))
 
         if not self._num_caches:
             # Use our learner as a single variable source.

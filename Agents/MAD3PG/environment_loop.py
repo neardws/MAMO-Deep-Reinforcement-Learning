@@ -11,6 +11,7 @@ from acme.utils import signals
 from dm_env import specs
 import numpy as np
 import tree
+from Log.logger import myapp
 
 
 class EnvironmentLoop(base.Worker):
@@ -69,8 +70,8 @@ class EnvironmentLoop(base.Worker):
         # Reset any counts and start the environment.
         
         start_time = time.time()
-        # print("*" * 32)
-        # print("start_time:", start_time)
+        # myapp.debug("**********************************************************")
+        # myapp.debug(f"{self._label} start_time: {start_time}")
         episode_steps = 0
 
         # For evaluation, this keeps track of the total undiscounted reward
@@ -78,10 +79,8 @@ class EnvironmentLoop(base.Worker):
         episode_return = tree.map_structure(_generate_zeros_from_spec,
                                             self._environment.reward_spec())
         timestep = self._environment.reset()
-        
-        # print("*" * 32)
-        # end_time = time.time()
-        # print("reset time taken:", end_time - start_time)
+
+        # myapp.debug(f"{self._label} reset time taken: {time.time() - start_time}")
         # start_time = time.time()
         # Make the first observation.
         self._actor.observe_first(timestep)
@@ -89,45 +88,125 @@ class EnvironmentLoop(base.Worker):
             # Initialize the observer with the current state of the env after reset
             # and the initial timestep.
             observer.observe_first(self._environment, timestep)
-        # print("*" * 32)
-        # end_time = time.time()
-        # print("observer time taken:", end_time - start_time)
+
+        # myapp.debug(f"{self._label} observer time taken: {time.time() - start_time}")
         # start_time = time.time()
         # Run an episode.
+        select_action_taken_time = 0
+        environment_step_taken_time = 0
+        actor_observe_taken_time = 0
+        actor_update_taken_time = 0
+        transform_action_array_to_actions_taken_times = 0
+        compute_baseline_information_objects_taken_times = 0
+        compute_baseline_reward_taken_times = 0
+        compute_vehicle_information_objects_taken_times = 0
+        compute_vehicle_reward_taken_times = 0
+        reward_history_taken_times = 0
+        update_information_objects_taken_times = 0
+        observation_taken_times = 0
+        
+        baseline_reward_compute_the_timeliness_of_views_times = 0
+        baseline_reward_compute_the_consistency_of_views_times = 0
+        baseline_reward_compute_the_redundancy_of_views_times = 0
+        baseline_reward_compute_the_cost_of_views_times = 0
+        baseline_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times = 0
+        baseline_reward_compute_the_age_of_view_times = 0
+        vehicle_reward_compute_the_timeliness_of_views_times = 0
+        vehicle_reward_compute_the_consistency_of_views_times = 0
+        vehicle_reward_compute_the_redundancy_of_views_times = 0
+        vehicle_reward_compute_the_cost_of_views_times = 0
+        vehicle_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times = 0
+        vehicle_reward_compute_the_age_of_view_times = 0
         while not timestep.last():
             # Generate an action from the agent's policy and step the environment.
+            start_time = time.time()
             action = self._actor.select_action(timestep.observation, timestep.vehicle_observation)
-            # print("*" * 32)
-            # end_time = time.time()
-            # print("select_action time taken:", end_time - start_time)
-            # start_time = time.time()
-            timestep = self._environment.step(action)
-            # print("*" * 32)
-            # end_time = time.time()
-            # print("environment.step time taken:", end_time - start_time)
-            # start_time = time.time()
+            select_action_taken_time += time.time() - start_time
+            # myapp.debug(f"{self._label} select_action time taken: {time.time() - start_time}")
+            start_time = time.time()
+            timestep, transform_action_array_to_actions_taken_time, \
+                compute_baseline_information_objects_taken_time, \
+                compute_baseline_reward_taken_time, \
+                compute_vehicle_information_objects_taken_time, \
+                compute_vehicle_reward_taken_time, \
+                reward_history_taken_time, \
+                update_information_objects_taken_time, \
+                observation_taken_time = self._environment.step(action)
+            transform_action_array_to_actions_taken_times += transform_action_array_to_actions_taken_time
+            compute_baseline_information_objects_taken_times += compute_baseline_information_objects_taken_time
+            compute_baseline_reward_taken_times += compute_baseline_reward_taken_time
+            compute_vehicle_information_objects_taken_times += compute_vehicle_information_objects_taken_time
+            compute_vehicle_reward_taken_times += compute_vehicle_reward_taken_time
+            reward_history_taken_times += reward_history_taken_time
+            update_information_objects_taken_times += update_information_objects_taken_time
+            observation_taken_times += observation_taken_time
+            
+            
+            # baseline_reward_compute_the_timeliness_of_views_times += baseline_reward_compute_the_timeliness_of_views_time
+            # baseline_reward_compute_the_consistency_of_views_times += baseline_reward_compute_the_consistency_of_views_time
+            # baseline_reward_compute_the_redundancy_of_views_times += baseline_reward_compute_the_redundancy_of_views_time
+            # baseline_reward_compute_the_cost_of_views_times += baseline_reward_compute_the_cost_of_views_time
+            # baseline_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times += baseline_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time
+            # baseline_reward_compute_the_age_of_view_times += baseline_reward_compute_the_age_of_view_time
+            # vehicle_reward_compute_the_timeliness_of_views_times += vehicle_reward_compute_the_timeliness_of_views_time
+            # vehicle_reward_compute_the_consistency_of_views_times += vehicle_reward_compute_the_consistency_of_views_time
+            # vehicle_reward_compute_the_redundancy_of_views_times += vehicle_reward_compute_the_redundancy_of_views_time
+            # vehicle_reward_compute_the_cost_of_views_times += vehicle_reward_compute_the_cost_of_views_time
+            # vehicle_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times += vehicle_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time
+            # vehicle_reward_compute_the_age_of_view_times += vehicle_reward_compute_the_age_of_view_time
+            
+            environment_step_taken_time += time.time() - start_time
+            # myapp.debug(f"{self._label} environment.step time taken: {time.time() - start_time}")
+            start_time = time.time()
             # Have the agent observe the timestep and let the actor update itself.
             self._actor.observe(action=action, next_timestep=timestep)
             for observer in self._observers:
                 # One environment step was completed. Observe the current state of the
                 # environment, the current timestep and the action.
                 observer.observe(self._environment, timestep, action)
-            # print("*" * 32)
-            # end_time = time.time()
-            # print("actor.observe time taken:", end_time - start_time)
-            # start_time = time.time()
+            actor_observe_taken_time += time.time() - start_time
+            # myapp.debug(f"{self._label} actor.observe time taken: {time.time() - start_time}")
+            start_time = time.time()
             if self._should_update:
                 self._actor.update()
-            # print("*" * 32)
-            # end_time = time.time()
-            # print("actor.update time taken:", end_time - start_time)
+            actor_update_taken_time += time.time() - start_time
+            # myapp.debug(f"{self._label} actor.update time taken: {time.time() - start_time}")
             # start_time = time.time()
 
+        myapp.debug(f"{self._label} select_action_taken_time: {select_action_taken_time}")
+        
+        myapp.debug(f"{self._label} transform_action_array_to_actions_taken_times: {transform_action_array_to_actions_taken_times}")
+        myapp.debug(f"{self._label} compute_baseline_information_objects_taken_times: {compute_baseline_information_objects_taken_times}")
+        myapp.debug(f"{self._label} compute_baseline_reward_taken_times: {compute_baseline_reward_taken_times}")
+        myapp.debug(f"{self._label} compute_vehicle_information_objects_taken_times: {compute_vehicle_information_objects_taken_times}")
+        myapp.debug(f"{self._label} compute_vehicle_reward_taken_times: {compute_vehicle_reward_taken_times}")
+        myapp.debug(f"{self._label} reward_history_taken_times: {reward_history_taken_times}")
+        myapp.debug(f"{self._label} update_information_objects_taken_times: {update_information_objects_taken_times}")
+        myapp.debug(f"{self._label} observation_taken_times: {observation_taken_times}")
+        
+        
+        # myapp.debug(f"{self._label} baseline_reward_compute_the_timeliness_of_views_times: {baseline_reward_compute_the_timeliness_of_views_times}")
+        # myapp.debug(f"{self._label} baseline_reward_compute_the_consistency_of_views_times: {baseline_reward_compute_the_consistency_of_views_times}")
+        # myapp.debug(f"{self._label} baseline_reward_compute_the_redundancy_of_views_times: {baseline_reward_compute_the_redundancy_of_views_times}")
+        # myapp.debug(f"{self._label} baseline_reward_compute_the_cost_of_views_times: {baseline_reward_compute_the_cost_of_views_times}")
+        # myapp.debug(f"{self._label} baseline_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times: {baseline_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times}")
+        # myapp.debug(f"{self._label} baseline_reward_compute_the_age_of_view_times: {baseline_reward_compute_the_age_of_view_times}")
+        
+        # myapp.debug(f"{self._label} vehicle_reward_compute_the_timeliness_of_views_times: {vehicle_reward_compute_the_timeliness_of_views_times}")
+        # myapp.debug(f"{self._label} vehicle_reward_compute_the_consistency_of_views_times: {vehicle_reward_compute_the_consistency_of_views_times}")
+        # myapp.debug(f"{self._label} vehicle_reward_compute_the_redundancy_of_views_times: {vehicle_reward_compute_the_redundancy_of_views_times}")
+        # myapp.debug(f"{self._label} vehicle_reward_compute_the_cost_of_views_times: {vehicle_reward_compute_the_cost_of_views_times}")
+        # myapp.debug(f"{self._label} vehicle_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times: {vehicle_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times}")
+        # myapp.debug(f"{self._label} vehicle_reward_compute_the_age_of_view_times: {vehicle_reward_compute_the_age_of_view_times}")
+        
+        myapp.debug(f"{self._label} environment_step_taken_time: {environment_step_taken_time}")
+        
+        
+        
+        myapp.debug(f"{self._label} actor_observe_taken_time: {actor_observe_taken_time}")
+        myapp.debug(f"{self._label} actor_update_taken_time: {actor_update_taken_time}")
         # Book-keeping.
         episode_steps += 1
-        # end_time = time.time()
-        # print("time taken: ", end_time - start_time)
-
         # Equivalent to: episode_return += timestep.reward
         # We capture the return value because if timestep.reward is a JAX
         # DeviceArray, episode_return will not be mutated in-place. (In all other
@@ -149,6 +228,8 @@ class EnvironmentLoop(base.Worker):
             'steps_per_second': steps_per_second,
         }
         result.update(counts)
+        # myapp.debug(f"{self._label} one episode finished")
+        # myapp.debug("**********************************************************")
         for observer in self._observers:
             result.update(observer.get_metrics())
         return result
@@ -174,23 +255,25 @@ class EnvironmentLoop(base.Worker):
         Raises:
         ValueError: If both 'num_episodes' and 'num_steps' are not None.
         """
-
+        myapp.debug(f"{self._label} run() num_episodes: {num_episodes}, num_steps: {num_steps}")
+        
         if not (num_episodes is None or num_steps is None):
             raise ValueError('Either "num_episodes" or "num_steps" should be None.')
 
         def should_terminate(episode_count: int, step_count: int) -> bool:
             return ((num_episodes is not None and episode_count >= num_episodes) or
                     (num_steps is not None and step_count >= num_steps))
-
+    
         episode_count, step_count = 0, 0
         with signals.runtime_terminator():
             while not should_terminate(episode_count, step_count):
+                start_time = time.time()
                 result = self.run_episode()
                 episode_count += 1
                 step_count += result['episode_length']
                 # Log the given episode results.
                 self._logger.write(result)
-
+                myapp.debug(f"{self._label} run() finished time taken: {time.time() - start_time}")
 # Placeholder for an EnvironmentLoop alias
 
 
