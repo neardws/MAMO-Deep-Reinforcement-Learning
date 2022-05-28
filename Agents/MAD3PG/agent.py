@@ -65,7 +65,7 @@ class D3PGConfig:
     vehicle_critic_optimizer: Optional[snt.Optimizer] = None
     edge_policy_optimizer: Optional[snt.Optimizer] = None
     edge_critic_optimizer: Optional[snt.Optimizer] = None
-    min_replay_size: int = 100000
+    min_replay_size: int = 1000
     max_replay_size: int = 1000000
     samples_per_insert: Optional[float] = 1.0
     n_step: int = 5
@@ -577,8 +577,8 @@ class MultiAgentDistributedDDPG:
         with program.group('learner'):
             learner = program.add_node(lp.CourierNode(self.learner, replay, counter))
 
-        # with program.group('evaluator'):
-        #     program.add_node(lp.CourierNode(self.evaluator, learner, counter))
+        with program.group('evaluator'):
+            program.add_node(lp.CourierNode(self.evaluator, learner, counter))
 
         if not self._num_caches:
             # Use our learner as a single variable source.

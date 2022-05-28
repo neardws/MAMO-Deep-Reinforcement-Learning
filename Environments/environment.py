@@ -1,7 +1,5 @@
 
 """Vehicular Network Environments."""
-import time
-from turtle import Turtle
 from dm_env import specs
 from acme.types import NestedSpec
 import numpy as np
@@ -10,7 +8,6 @@ from typing import List, Optional, Tuple, NamedTuple, Dict
 from Environments._environment import baseEnvironment, TimeStep, restart, termination, transition
 import Environments.environmentConfig as env_config
 from Environments.utilities import sensingAndQueuing, v2iTransmission
-from Log.logger import myapp
 
 
 class vehicularNetworkEnv(baseEnvironment):
@@ -140,7 +137,6 @@ class vehicularNetworkEnv(baseEnvironment):
         self._min_redundancy: float = 100000000
         self._max_cost: float = -1
         self._min_cost: float = 100000000
-        self._cost_views_history: List[float] = []
 
         self._reward: np.ndarray = np.zeros(self._reward_size)
 
@@ -246,96 +242,35 @@ class vehicularNetworkEnv(baseEnvironment):
         episode is reached, you are responsible for calling `reset()`
         to reset this environment's state.
         """
-        transform_action_array_to_actions_taken_time = 0
-        compute_baseline_information_objects_taken_time = 0
-        compute_baseline_reward_taken_time = 0
-        
-        baseline_reward_compute_the_timeliness_of_views_times = 0
-        baseline_reward_compute_the_consistency_of_views_times = 0
-        baseline_reward_compute_the_redundancy_of_views_times = 0
-        baseline_reward_compute_the_cost_of_views_times = 0 
-        baseline_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times = 0
-        baseline_reward_compute_the_age_of_view_times = 0
-        
-        compute_vehicle_information_objects_taken_time = 0
-        compute_vehicle_reward_taken_time = 0
-        
-        vehicle_reward_compute_the_timeliness_of_views_times = 0
-        vehicle_reward_compute_the_consistency_of_views_times = 0
-        vehicle_reward_compute_the_redundancy_of_views_times = 0
-        vehicle_reward_compute_the_cost_of_views_times = 0 
-        vehicle_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times = 0
-        vehicle_reward_compute_the_age_of_view_times = 0
-        
-        reward_history_taken_time = 0
-        update_information_objects_taken_time = 0
-        observation_taken_time = 0
         
         if self._reset_next_step:
             return self.reset()
-        start_time = time.time()
         views_required_number, information_type_required_by_views_at_now, vehicle_actions, edge_action = \
             self.transform_action_array_to_actions(action)
-        transform_action_array_to_actions_taken_time += time.time() - start_time
         
-        start_time = time.time()
         """Compute the baseline reward and difference rewards."""
-        information_objects_ordered_by_views = self.compute_information_objects(
+        information_objects = self.compute_information_objects(
             views_required_number=views_required_number,
             information_type_required_by_views_at_now=information_type_required_by_views_at_now,
             vehicle_actions=vehicle_actions,
             edge_action=edge_action,
-        )
-        compute_baseline_information_objects_taken_time += time.time() - start_time
-        
-        start_time = time.time()
+        )        
         baseline_reward = self.compute_reward(
-                information_objects_ordered_by_views=information_objects_ordered_by_views,
+                information_objects_ordered_by_views=information_objects[0],
                 vehicle_actions=vehicle_actions,
             )
-        
-        # baseline_reward_compute_the_timeliness_of_views_times = compute_the_timeliness_of_views_time
-        # baseline_reward_compute_the_consistency_of_views_times = compute_the_consistency_of_views_time
-        # baseline_reward_compute_the_redundancy_of_views_times = compute_the_redundancy_of_views_time
-        # baseline_reward_compute_the_cost_of_views_times = compute_the_cost_of_views_time
-        # baseline_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times = normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time
-        # baseline_reward_compute_the_age_of_view_times = compute_the_age_of_view_time
-        
-        compute_baseline_reward_taken_time += time.time() - start_time
-
         self._reward[-1] = baseline_reward
         
         
         for i in range(self._config.vehicle_number):
-            start_time = time.time()
-            information_objects_ordered_by_views = self.compute_information_objects(
-                views_required_number=views_required_number,
-                information_type_required_by_views_at_now=information_type_required_by_views_at_now,
-                vehicle_actions=vehicle_actions,
-                edge_action=edge_action,
-                vehicle_index=i,
-            )
-            compute_vehicle_information_objects_taken_time += time.time() - start_time
-
-            start_time = time.time()
             vehicle_baseline_reward = self.compute_reward(
-                information_objects_ordered_by_views=information_objects_ordered_by_views,
+                information_objects_ordered_by_views=information_objects[i + 1],
                 vehicle_actions=vehicle_actions,
                 vehicle_index=i,
             )
-            
-            # vehicle_reward_compute_the_timeliness_of_views_times += compute_the_timeliness_of_views_time
-            # vehicle_reward_compute_the_consistency_of_views_times += compute_the_consistency_of_views_time
-            # vehicle_reward_compute_the_redundancy_of_views_times += compute_the_redundancy_of_views_time
-            # vehicle_reward_compute_the_cost_of_views_times += compute_the_cost_of_views_time
-            # vehicle_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times += normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time
-            # vehicle_reward_compute_the_age_of_view_times += compute_the_age_of_view_time
-            
             vehicle_reward = baseline_reward - vehicle_baseline_reward
             self._reward[i] = vehicle_reward
-            compute_vehicle_reward_taken_time += time.time() - start_time
         
-        start_time = time.time()
         min_reward_history_at_now = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
         max_reward_history_at_now = vehicularNetworkEnv.get_max_reward_at_now(int(self._time_slots.now()))
         if min_reward_history_at_now != 100 and max_reward_history_at_now != -100:
@@ -346,23 +281,12 @@ class vehicularNetworkEnv(baseEnvironment):
         else:
             edge_reward = baseline_reward
         self._reward[-2] = edge_reward
-        reward_history_taken_time += time.time() - start_time
 
-        start_time = time.time()
         """Update the information in the edge node."""
-        information_objects_ordered_by_views = self.compute_information_objects(
-            views_required_number=views_required_number,
-            information_type_required_by_views_at_now=information_type_required_by_views_at_now,
-            vehicle_actions=vehicle_actions,
-            edge_action=edge_action,
-        )
-
         self.update_information_in_edge(
-            information_objects_ordered_by_views=information_objects_ordered_by_views,
+            information_objects_ordered_by_views=information_objects[0],
         )
-        update_information_objects_taken_time += time.time() - start_time
         # myapp.debug(f"\ninformation_objects_ordered_by_views:\n{self.string_of_information_objects_ordered_by_views(information_objects_ordered_by_views)}")
-        start_time = time.time()
         observation = self._observation()
 
         vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
@@ -373,53 +297,13 @@ class vehicularNetworkEnv(baseEnvironment):
             observation=observation,
             is_output_two_dimension=True,
         )
-        observation_taken_time += time.time() - start_time
 
         # check for termination
         if self._time_slots.is_end():
             self._reset_next_step = True
-            return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation),  transform_action_array_to_actions_taken_time, \
-                compute_baseline_information_objects_taken_time, \
-                compute_baseline_reward_taken_time, \
-                compute_vehicle_information_objects_taken_time, \
-                compute_vehicle_reward_taken_time, \
-                reward_history_taken_time, \
-                update_information_objects_taken_time, \
-                observation_taken_time
-                # baseline_reward_compute_the_timeliness_of_views_times, \
-                # baseline_reward_compute_the_consistency_of_views_times, \
-                # baseline_reward_compute_the_redundancy_of_views_times, \
-                # baseline_reward_compute_the_cost_of_views_times, \
-                # baseline_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times, \
-                # baseline_reward_compute_the_age_of_view_times, \
-                # vehicle_reward_compute_the_timeliness_of_views_times, \
-                # vehicle_reward_compute_the_consistency_of_views_times, \
-                # vehicle_reward_compute_the_redundancy_of_views_times, \
-                # vehicle_reward_compute_the_cost_of_views_times, \
-                # vehicle_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times, \
-                # vehicle_reward_compute_the_age_of_view_times
-            
+            return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
         self._time_slots.add_time()
-        return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation), transform_action_array_to_actions_taken_time, \
-            compute_baseline_information_objects_taken_time, \
-            compute_baseline_reward_taken_time, \
-            compute_vehicle_information_objects_taken_time, \
-            compute_vehicle_reward_taken_time, \
-            reward_history_taken_time, \
-            update_information_objects_taken_time, \
-            observation_taken_time
-            # baseline_reward_compute_the_timeliness_of_views_times, \
-            # baseline_reward_compute_the_consistency_of_views_times, \
-            # baseline_reward_compute_the_redundancy_of_views_times, \
-            # baseline_reward_compute_the_cost_of_views_times, \
-            # baseline_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times, \
-            # baseline_reward_compute_the_age_of_view_times, \
-            # vehicle_reward_compute_the_timeliness_of_views_times, \
-            # vehicle_reward_compute_the_consistency_of_views_times, \
-            # vehicle_reward_compute_the_redundancy_of_views_times, \
-            # vehicle_reward_compute_the_cost_of_views_times, \
-            # vehicle_reward_normalize_the_timeliness_consistency_redundancy_and_cost_of_views_times, \
-            # vehicle_reward_compute_the_age_of_view_times
+        return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
 
     def transform_action_array_to_actions(self, action: np.ndarray) -> Tuple[int, List[List[int]], List[vehicleAction], edgeAction]:
         """Transform the action array to the actions of vehicles and the edge node.
@@ -475,8 +359,8 @@ class vehicularNetworkEnv(baseEnvironment):
         views_required_number: int,
         information_type_required_by_views_at_now: List[List[int]],
         vehicle_actions: List[vehicleAction],
-        edge_action: edgeAction,
-        vehicle_index: int = -1) -> List[List[informationPacket]]:
+        edge_action: edgeAction
+    ) -> List[List[List[informationPacket]]]:
         """Compute the reward.
         Args:
             views_required_number: the number of views required by applications.
@@ -486,18 +370,17 @@ class vehicularNetworkEnv(baseEnvironment):
             vehicle_index: the index of the vehicle which do nothing, i.e., its action is null.
                 the default value is -1, which means no vehicles do nothing.
         Returns:
-            reward: the reward of the vehicle.
+            the information objects: the objects under all vehicles and one vehicle do nothing.
+            (i.e., returns[0] is the information objects under all vehicles and returns[1] is the information objects under vehicle v1 do nothing.)
         """
 
-        information_objects_ordered_by_views: List[List[informationPacket]] = []
-        for i in range(views_required_number):
+        information_objects_ordered_by_views: List[List[List[informationPacket]]] = []
+        for vehicle_index in range(self._config.vehicle_number + 1):
             information_objects_ordered_by_views.append(list())
+            for _ in range(views_required_number):
+                information_objects_ordered_by_views[vehicle_index].append(list())
 
         for i in range(self._config.vehicle_number):
-            
-            if i == vehicle_index:     # the vehicle do nothing
-                continue
-            
             sensing_and_queuing = sensingAndQueuing(
                 vehicle=self._vehicle_list.get_vehicle(i),
                 vehicle_action=vehicle_actions[i],
@@ -540,19 +423,25 @@ class vehicularNetworkEnv(baseEnvironment):
 
                 for view_index in range(len(information_type_required_by_views_at_now)):
                     if infor.get_type() in information_type_required_by_views_at_now[view_index]:
-                        information_objects_ordered_by_views[view_index].append(infor)
-        
+                        information_objects_ordered_by_views[0][view_index].append(infor)
+                        for vehicle_index in range(self._config.vehicle_number):
+                            if i == vehicle_index:
+                                pass
+                            else:
+                                information_objects_ordered_by_views[vehicle_index + 1][view_index].append(infor)
+                        
         """If the view is uncomplete, add the missing information from the information in edge to the view."""
-        for view_index in range(len(information_type_required_by_views_at_now)):
-            for infor_type in information_type_required_by_views_at_now[view_index]:
-                infor_type_exist = False
-                for infor in information_objects_ordered_by_views[view_index]:
-                    if infor.get_type() == infor_type:
-                        infor_type_exist = True
-                        break
-                if not infor_type_exist and len(self._information_in_edge[infor_type]) > 0:
-                    infor_in_edge = self._information_in_edge[infor_type][0]
-                    information_objects_ordered_by_views[view_index].append(infor_in_edge)
+        for vehicle_index in range(self._config.vehicle_number + 1):
+            for view_index in range(len(information_type_required_by_views_at_now)):
+                for infor_type in information_type_required_by_views_at_now[view_index]:
+                    infor_type_exist = False
+                    for infor in information_objects_ordered_by_views[vehicle_index][view_index]:
+                        if infor.get_type() == infor_type:
+                            infor_type_exist = True
+                            break
+                    if not infor_type_exist and len(self._information_in_edge[infor_type]) > 0:
+                        infor_in_edge = self._information_in_edge[infor_type][0]
+                        information_objects_ordered_by_views[vehicle_index][view_index].append(infor_in_edge)
 
         return information_objects_ordered_by_views
 
@@ -570,16 +459,9 @@ class vehicularNetworkEnv(baseEnvironment):
         self,
         information_objects_ordered_by_views: List[List[informationPacket]],
         vehicle_actions: List[vehicleAction],
-        vehicle_index: int = -1):
-        
-        compute_the_timeliness_of_views_time = 0
-        compute_the_consistency_of_views_time = 0
-        compute_the_redundancy_of_views_time = 0
-        compute_the_cost_of_views_time = 0
-        normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time = 0
-        compute_the_age_of_view_time = 0
+        vehicle_index: int = -1
+    ) -> float:
 
-        start_time = time.time()
         """Compute the timeliness of views"""
         timeliness_views = []
         for information_objects in information_objects_ordered_by_views:
@@ -603,9 +485,7 @@ class vehicularNetworkEnv(baseEnvironment):
                     self._max_timeliness = timeliness
                 if timeliness < self._min_timeliness:
                     self._min_timeliness = timeliness
-        compute_the_timeliness_of_views_time = time.time() - start_time
         
-        start_time = time.time()
         """Compute the consistency of views"""
         consistency_views = []
         for information_objects in information_objects_ordered_by_views:
@@ -619,9 +499,7 @@ class vehicularNetworkEnv(baseEnvironment):
                     self._max_consistency = consistency
                 if consistency < self._min_consistency:
                     self._min_consistency = consistency
-        compute_the_consistency_of_views_time = time.time() - start_time
 
-        start_time = time.time()
         """Compute the redundancy of views"""
         redundancy_views = []
         for information_objects in information_objects_ordered_by_views:
@@ -640,9 +518,7 @@ class vehicularNetworkEnv(baseEnvironment):
                     self._max_redundancy = redundancy
                 if redundancy < self._min_redundancy:
                     self._min_redundancy = redundancy
-        compute_the_redundancy_of_views_time = time.time() - start_time
         
-        start_time = time.time()
         """Compute the cost of view"""
         cost_views = []
         for information_objects in information_objects_ordered_by_views:
@@ -668,9 +544,7 @@ class vehicularNetworkEnv(baseEnvironment):
                     self._max_cost = cost
                 if cost < self._min_cost:
                     self._min_cost = cost
-        compute_the_cost_of_views_time = time.time() - start_time
         
-        start_time = time.time()
         """Normalize the timeliness, consistency, redundancy, and cost of views"""
         timeliness_views_normalized = []
         consistency_views_normalized = []
@@ -712,9 +586,7 @@ class vehicularNetworkEnv(baseEnvironment):
                 )
             else:
                 cost_views_normalized.append(-1)
-        normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time = time.time() - start_time
         
-        start_time = time.time()
         """Compute the age of view."""
         age_of_view = []
         for i in range(len(timeliness_views_normalized)):
@@ -738,14 +610,6 @@ class vehicularNetworkEnv(baseEnvironment):
                 now=int(self._time_slots.now()),
                 reward=reward,
             )
-        compute_the_age_of_view_time = time.time() - start_time
-        # print("reward:", reward)
-        # print("compute_the_timeliness_of_views_time:", compute_the_timeliness_of_views_time)
-        # print("compute_the_consistency_of_views_time:", compute_the_consistency_of_views_time)
-        # print("compute_the_redundancy_of_views_time:", compute_the_redundancy_of_views_time)
-        # print("compute_the_cost_of_views_time:", compute_the_cost_of_views_time)
-        # print("normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time:", normalize_the_timeliness_consistency_redundancy_and_cost_of_views_time)
-        # print("compute_the_age_of_view_time:", compute_the_age_of_view_time)
         
         return reward
 

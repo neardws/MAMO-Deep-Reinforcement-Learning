@@ -1,9 +1,7 @@
 import launchpad as lp
-import acme
 from Environments.environment import vehicularNetworkEnv, make_environment_spec
 from Agents.MAD3PG.networks import make_default_D3PGNetworks
 from Agents.MAD3PG.agent import D3PGConfig, MultiAgentDistributedDDPG
-from Agents.MAD3PG.networks import make_default_D3PGNetworks
 from Environments.environmentConfig import vehicularNetworkEnvConfig
 
 def main(_):
@@ -28,9 +26,9 @@ def main(_):
         config=agent_config,
         environment_factory=lambda x: vehicularNetworkEnv(environment_config),
         environment_spec=spec,
-        max_actor_steps=500,
+        max_actor_steps=1000,
         networks=networks,
-        num_actors=1,
+        num_actors=10,
     )
 
     program = agent.build()
