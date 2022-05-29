@@ -1,18 +1,3 @@
-# python3
-# Copyright 2018 DeepMind Technologies Limited. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """A simple agent-environment training loop."""
 
 import operator
@@ -26,7 +11,6 @@ from acme.utils import signals
 from dm_env import specs
 import numpy as np
 import tree
-
 
 class EnvironmentLoop(base.Worker):
     """A simple RL environment loop.
@@ -65,6 +49,7 @@ class EnvironmentLoop(base.Worker):
         # Internalize agent and environment.
         self._environment = environment
         self._actor = actor
+        self._label = label
         self._counter = counter or counting.Counter()
         self._logger = logger or loggers.make_default_logger(label)
         self._should_update = should_update
@@ -89,6 +74,7 @@ class EnvironmentLoop(base.Worker):
         episode_return = tree.map_structure(_generate_zeros_from_spec,
                                             self._environment.reward_spec())
         timestep = self._environment.reset()
+
         # Make the first observation.
         self._actor.observe_first(timestep)
         for observer in self._observers:
@@ -109,10 +95,8 @@ class EnvironmentLoop(base.Worker):
                 observer.observe(self._environment, timestep, action)
             if self._should_update:
                 self._actor.update()
-
         # Book-keeping.
         episode_steps += 1
-
         # Equivalent to: episode_return += timestep.reward
         # We capture the return value because if timestep.reward is a JAX
         # DeviceArray, episode_return will not be mutated in-place. (In all other
@@ -128,11 +112,13 @@ class EnvironmentLoop(base.Worker):
         # Collect the results and combine with counts.
         steps_per_second = episode_steps / (time.time() - start_time)
         result = {
+            'label': self._label,
             'episode_length': episode_steps,
             'episode_return': episode_return,
             'steps_per_second': steps_per_second,
         }
         result.update(counts)
+
         for observer in self._observers:
             result.update(observer.get_metrics())
         return result
@@ -157,15 +143,14 @@ class EnvironmentLoop(base.Worker):
 
         Raises:
         ValueError: If both 'num_episodes' and 'num_steps' are not None.
-        """
-
+        """        
         if not (num_episodes is None or num_steps is None):
             raise ValueError('Either "num_episodes" or "num_steps" should be None.')
 
         def should_terminate(episode_count: int, step_count: int) -> bool:
             return ((num_episodes is not None and episode_count >= num_episodes) or
                     (num_steps is not None and step_count >= num_steps))
-
+    
         episode_count, step_count = 0, 0
         with signals.runtime_terminator():
             while not should_terminate(episode_count, step_count):
@@ -174,7 +159,6 @@ class EnvironmentLoop(base.Worker):
                 step_count += result['episode_length']
                 # Log the given episode results.
                 self._logger.write(result)
-
 # Placeholder for an EnvironmentLoop alias
 
 

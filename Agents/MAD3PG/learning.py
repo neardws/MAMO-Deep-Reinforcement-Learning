@@ -210,51 +210,8 @@ class D3PGLearner(acme.Learner):
         self._vehicle_action_size = vehicle_action_size
 
     @tf.function
-    def _step(self) -> Dict[str, tf.Tensor]:
-        # Update target network
-        online_variables = (
-            *self._vehicle_observation_network.variables,
-            *self._vehicle_critic_network.variables,
-            *self._vehicle_policy_network.variables,
-            *self._edge_observation_network.variables,
-            *self._edge_critic_network.variables,
-            *self._edge_policy_network.variables,
-        )
-        target_variables = (
-            *self._target_vehicle_observation_network.variables,
-            *self._target_vehicle_critic_network.variables,
-            *self._target_vehicle_policy_network.variables,
-            *self._target_edge_observation_network.variables,
-            *self._target_edge_critic_network.variables,
-            *self._target_edge_policy_network.variables,
-        )
-
-        # Make online -> target network update ops.
-        if tf.math.mod(self._num_steps, self._target_update_period) == 0:
-            for src, dest in zip(online_variables, target_variables):
-                dest.assign(src)
-        self._num_steps.assign_add(1)
-
-        # Get data from replay (dropping extras if any). Note there is no
-        # extra data here because we do not insert any into Reverb.
-        sample = next(self._iterator)
+    def _step(self, sample) -> Dict[str, tf.Tensor]:
         transitions: types.Transition = sample.data  # Assuming ReverbSample.
-
-        # print("*" * 32)
-        # print("transitions.action")
-        # print(transitions.action)
-        # print("transitions.observation")
-        # print(transitions.observation)
-        # print("transitions.next_observation")
-        # print(transitions.next_observation)
-        # print("transitions.discount")
-        # print(transitions.discount)
-        # print("transitions.vehicle_observation")
-        # print(transitions.vehicle_observation)
-        # print("transitions.vehicle_next_observation")
-        # print(transitions.vehicle_next_observation)
-        # print("transitions.reward")
-        # print(transitions.reward)
 
         # Cast the additional discount to match the environment discount dtype.
         discount = tf.cast(self._discount, dtype=tf.float64)
@@ -263,110 +220,38 @@ class D3PGLearner(acme.Learner):
             """Compute the loss for the policy and critic of vehicles."""
             vehicle_critic_losses = []
             vehicle_policy_losses = []
+            """Deal with the observations."""
+            # the shpae of the transitions.vehicle_observation is [batch_size, vehicle_number, vehicle_observation_size]
+            batch_size = transitions.vehicle_observation.shape[0]
+            
+            # NOTE: the input of the vehicle_observation_network is 
+            # [batch_size * vehicle_number, vehicle_observation_size]
+            # it follows the order of [batch_size * vehicle_id, vehicle_observation_size]
+            # [0 * 0, vehicle_observation_size]
+            # [0 * 1, vehicle_observation_size]
+            # [0 * 2, vehicle_observation_size]
+            # .......
+            vehicles_o_t = self._target_vehicle_observation_network(
+                tf.reshape(transitions.vehicle_observation, shape=[-1, self._vehicle_observation_size]))
+            # the shape of vehicles_o_t is [batch_size * vehicle_number, _]
+            vehicles_o_t = tree.map_structure(tf.stop_gradient, vehicles_o_t)
+            # the shape of vehicles_a_t is [batch_size * vehicle_number, vehicle_action_size]
+            vehicles_a_t = self._target_vehicle_policy_network(vehicles_o_t)
+            
+            
+            for vehicle_index in range(self._vehicle_number):
+                # Maybe transform the observation before feeding into policy and critic.
+                # Transforming the observations this way at the start of the learning
+                # step effectively means that the policy and critic share observation
+                # network weights.
 
-            for observation_index in range(len(transitions.observation.values)):
-                """Deal with the observations."""
-
-                o_t = self._target_vehicle_observation_network(
-                    transitions.vehicle_next_observation.values[observation_index][:, 0: int(self._vehicle_observation_size)])
-                o_t = tree.map_structure(tf.stop_gradient, o_t)
-                vehicles_a_t = self._target_vehicle_policy_network(o_t)
-                for vehicle_index in range(1, self._vehicle_number):
-                    o_t = self._target_vehicle_observation_network(
-                        transitions.vehicle_next_observation.values[observation_index][:, vehicle_index * self._vehicle_observation_size : (vehicle_index + 1) * self._vehicle_observation_size])
-                    o_t = tree.map_structure(tf.stop_gradient, o_t)
-                    a_t = self._target_vehicle_policy_network(o_t)
-                    vehicles_a_t = tf.concat([vehicles_a_t, a_t], axis=1)
+                o_tm1 = self._vehicle_observation_network(
+                    transitions.vehicle_observation[:, vehicle_index, :])
                 
-                for vehicle_index in range(self._vehicle_number):
-                    # Maybe transform the observation before feeding into policy and critic.
-                    # Transforming the observations this way at the start of the learning
-                    # step effectively means that the policy and critic share observation
-                    # network weights.
-                    o_tm1 = self._vehicle_observation_network(
-                        transitions.vehicle_observation.values[observation_index][:, vehicle_index * self._vehicle_observation_size : (vehicle_index + 1) * self._vehicle_observation_size])
-                    o_t = self._target_vehicle_observation_network(
-                        transitions.vehicle_next_observation.values[observation_index][:, vehicle_index * self._vehicle_observation_size : (vehicle_index + 1) * self._vehicle_observation_size])
-                    # This stop_gradient prevents gradients to propagate into the target
-                    # observation network. In addition, since the online policy network is
-                    # evaluated at o_t, this also means the policy loss does not influence
-                    # the observation network training.
-                    o_t = tree.map_structure(tf.stop_gradient, o_t)
-
-                    # Critic learning.
-                    q_tm1 = self._vehicle_critic_network(o_tm1, transitions.action.values[observation_index][:, : self._vehicle_number * self._vehicle_action_size])
-                    q_t = self._target_vehicle_critic_network(o_t, vehicles_a_t)
-
-                    # Critic loss.
-                    vehicle_critic_loss = losses.categorical(q_tm1, transitions.reward.values[observation_index][:, vehicle_index],
-                                                    discount * transitions.discount.values[observation_index], q_t)
-                    # print("@" * 32)
-                    # print("vehicle_critic_loss")
-                    # print(vehicle_critic_loss)
-                    # vehicle_critic_loss = tf.reduce_mean(vehicle_critic_loss, axis=[0])
-                    # print("vehicle_critic_loss")
-                    # print(vehicle_critic_loss)
-                    # print("@" * 32)
-                    # # vehicle_critic_loss = tf.reduce_mean(vehicle_critic_loss, axis=[0])
-
-                    vehicle_critic_losses.append(vehicle_critic_loss)
-
-                    # Actor learning
-                    if vehicle_index == 0:
-                        dpg_a_t = self._vehicle_policy_network(o_t)
-                    else:
-                        dpg_a_t = vehicles_a_t[:, 0: self._vehicle_action_size]
-                    for i in range(self._vehicle_number):
-                        if i != 0 and i != vehicle_index:
-                            dpg_a_t = tf.concat([dpg_a_t, vehicles_a_t[:, i* self._vehicle_action_size: (i+1) * self._vehicle_action_size]], axis=1)
-                        elif i != 0 and i == vehicle_index:
-                            dpg_a_t = tf.concat([dpg_a_t, self._vehicle_policy_network(o_t)], axis=1)
-                    
-                    dpg_z_t = self._vehicle_critic_network(o_t, dpg_a_t)
-                    dpg_q_t = dpg_z_t.mean()
-
-                    # Actor loss. If clipping is true use dqda clipping and clip the norm.
-                    dqda_clipping = 1.0 if self._clipping else None
-                    vehicle_policy_loss = losses.dpg(
-                        dpg_q_t,
-                        vehicles_a_t,
-                        tape=tape,
-                        dqda_clipping=dqda_clipping,
-                        clip_norm=self._clipping)
-                    # print("@" * 32)
-                    # print("vehicle_policy_loss")
-                    # print(vehicle_policy_loss)
-                    # vehicle_policy_loss = tf.reduce_mean(vehicle_policy_loss, axis=[0])
-                    # print("vehicle_policy_loss")
-                    # print(vehicle_policy_loss)
-                    # print("@" * 32)
-                    # vehicle_policy_loss = tf.reduce_mean(vehicle_policy_loss, axis=[0])
-                    vehicle_policy_losses.append(vehicle_policy_loss)
-                # vehicle_critic_loss = tf.reduce_mean(tf.stack(vehicle_critic_losses, axis=0), axis=[0])
-                # vehicle_policy_loss = tf.reduce_mean(tf.stack(vehicle_policy_losses, axis=0), axis=[0])
-                # vehicles_critic_losses.append(vehicle_critic_loss)
-                # vehicles_policy_losses.append(vehicle_policy_loss)
-            """Compute the mean loss for the policy and critic of vehicles."""
-            vehicle_critic_loss = tf.reduce_mean(tf.stack(vehicle_critic_losses, axis=0))
-            vehicle_policy_loss = tf.reduce_mean(tf.stack(vehicle_policy_losses, axis=0))
-            # print("@" * 32)
-            # print("vehicle_critic_loss")
-            # print(vehicle_critic_loss)
-            # print("vehicle_policy_loss")
-            # print(vehicle_policy_loss)
-            # print("@" * 32)
-            # vehicle_critic_loss = tf.reduce_mean(vehicle_critic_loss, axis=[0])
-            # vehicle_policy_loss = tf.reduce_mean(vehicle_policy_loss, axis=[0])
-
-
-            """Compute the loss for the policy and critic of edge."""
-            edge_critic_losses = []
-            edge_policy_losses = []
-
-            for observation_index in range(len(transitions.observation.values)):
-
-                o_tm1 = self._edge_observation_network(transitions.observation.values[observation_index])
-                o_t = self._target_edge_observation_network(transitions.next_observation.values[observation_index])
+                # the shape of o_t is [batch_size, vehicle_observation_size]
+                o_t = self._target_vehicle_observation_network(
+                    transitions.vehicle_next_observation[:, vehicle_index, :])
+                
                 # This stop_gradient prevents gradients to propagate into the target
                 # observation network. In addition, since the online policy network is
                 # evaluated at o_t, this also means the policy loss does not influence
@@ -374,84 +259,98 @@ class D3PGLearner(acme.Learner):
                 o_t = tree.map_structure(tf.stop_gradient, o_t)
 
                 # Critic learning.
-                a_t = self._target_edge_policy_network(o_t)
-                a_t = tf.concat([vehicles_a_t, a_t], axis=1)
-                # print("transitions.action.values[observation_index][:, self._vehicle_number * self._vehicle_action_size:]")
-                # print(transitions.action.values[observation_index][:, self._vehicle_number * self._vehicle_action_size:])
-                q_tm1 = self._edge_critic_network(o_tm1, transitions.action.values[observation_index])
-                q_t = self._target_edge_critic_network(o_t, a_t)
+                q_tm1 = self._vehicle_critic_network(o_tm1, transitions.action[:, : self._vehicle_number * self._vehicle_action_size])
+                q_t = self._target_vehicle_critic_network(o_t, tf.reshape(vehicles_a_t, shape=[batch_size, -1]))
 
                 # Critic loss.
-                edge_critic_loss = losses.categorical(q_tm1, transitions.reward.values[observation_index][:, -1],
-                                                discount * transitions.discount.values[observation_index], q_t)
-                edge_critic_losses.append(edge_critic_loss)
-                # Actor learning.
-                dpg_a_t = self._edge_policy_network(o_t)
-                dpg_a_t = tf.concat([vehicles_a_t, dpg_a_t], axis=1)
-                dpg_z_t = self._edge_critic_network(o_t, dpg_a_t)
+                vehicle_critic_loss = losses.categorical(q_tm1, transitions.reward[:, vehicle_index],
+                                                discount * transitions.discount, q_t)
+                vehicle_critic_losses.append(vehicle_critic_loss)
+
+                # Actor learning
+                if vehicle_index == 0:
+                    dpg_a_t = self._vehicle_policy_network(o_t)
+                else:
+                    dpg_a_t = tf.reshape(vehicles_a_t, shape=[batch_size, self._vehicle_number, self._vehicle_action_size])[:, 0, :]
+                for i in range(self._vehicle_number):
+                    if i != 0 and i != vehicle_index:
+                        dpg_a_t = tf.concat([dpg_a_t, tf.reshape(vehicles_a_t, shape=[batch_size, self._vehicle_number, self._vehicle_action_size])[:, i, :]], axis=1)
+                    elif i != 0 and i == vehicle_index:
+                        dpg_a_t = tf.concat([dpg_a_t, self._vehicle_policy_network(o_t)], axis=1)
+                
+                dpg_z_t = self._vehicle_critic_network(o_t, dpg_a_t)
                 dpg_q_t = dpg_z_t.mean()
 
                 # Actor loss. If clipping is true use dqda clipping and clip the norm.
                 dqda_clipping = 1.0 if self._clipping else None
-                edge_policy_loss = losses.dpg(
+                vehicle_policy_loss = losses.dpg(
                     dpg_q_t,
-                    dpg_a_t,
+                    vehicles_a_t,
                     tape=tape,
                     dqda_clipping=dqda_clipping,
                     clip_norm=self._clipping)
-                edge_policy_losses.append(edge_policy_loss)
+                vehicle_policy_losses.append(vehicle_policy_loss)
 
-                # print("!" * 32)
-                # print("edge_critic_loss")
-                # print(edge_critic_loss)
-                # print("edge_policy_loss")
-                # print(edge_policy_loss)
-                # print("!" * 32)
+            """Compute the mean loss for the policy and critic of vehicles."""
+            vehicle_critic_loss = tf.reduce_mean(tf.stack(vehicle_critic_losses, axis=0))
+            vehicle_policy_loss = tf.reduce_mean(tf.stack(vehicle_policy_losses, axis=0))
+
+            """Compute the loss for the policy and critic of edge."""
+            edge_critic_losses = []
+            edge_policy_losses = []
+
+            o_tm1 = self._edge_observation_network(transitions.observation)
+            o_t = self._target_edge_observation_network(transitions.next_observation)
+            # This stop_gradient prevents gradients to propagate into the target
+            # observation network. In addition, since the online policy network is
+            # evaluated at o_t, this also means the policy loss does not influence
+            # the observation network training.
+            o_t = tree.map_structure(tf.stop_gradient, o_t)
+
+            # Critic learning.
+            a_t = self._target_edge_policy_network(o_t)
+            a_t = tf.concat([tf.reshape(vehicles_a_t, shape=[batch_size, -1]), a_t], axis=1)
+            q_tm1 = self._edge_critic_network(o_tm1, transitions.action)
+            q_t = self._target_edge_critic_network(o_t, a_t)
+
+            # Critic loss.
+            edge_critic_loss = losses.categorical(q_tm1, transitions.reward[:, -1],
+                                            discount * transitions.discount, q_t)
+            edge_critic_losses.append(edge_critic_loss)
+            # Actor learning.
+            dpg_a_t = self._edge_policy_network(o_t)
+            dpg_a_t = tf.concat([tf.reshape(vehicles_a_t, shape=[batch_size, -1]), dpg_a_t], axis=1)
+            dpg_z_t = self._edge_critic_network(o_t, dpg_a_t)
+            dpg_q_t = dpg_z_t.mean()
+
+            # Actor loss. If clipping is true use dqda clipping and clip the norm.
+            dqda_clipping = 1.0 if self._clipping else None
+            edge_policy_loss = losses.dpg(
+                dpg_q_t,
+                dpg_a_t,
+                tape=tape,
+                dqda_clipping=dqda_clipping,
+                clip_norm=self._clipping)
+            edge_policy_losses.append(edge_policy_loss)
 
             edge_critic_loss = tf.reduce_mean(tf.stack(edge_critic_losses, axis=0))
             edge_policy_loss = tf.reduce_mean(tf.stack(edge_policy_losses, axis=0))
-        
-            # print("@" * 32)
-            # print("edge_critic_loss")
-            # print(edge_critic_loss)
-            # print("edge_policy_loss")
-            # print(edge_policy_loss)
-            # print("@" * 32)
+
         # Get trainable variables.
         vehicle_policy_variables = self._vehicle_policy_network.trainable_variables
         vehicle_critic_variables = (
             # In this agent, the critic loss trains the observation network.
             self._vehicle_observation_network.trainable_variables +
             self._vehicle_critic_network.trainable_variables)
-        # print("vehicle_policy_variables")
-        # print(vehicle_policy_variables)
-        # print(len(vehicle_policy_variables))
-        # print("vehicle_critic_variables")
-        # print(vehicle_critic_variables)
-        # print(len(vehicle_critic_variables))
-
 
         edge_policy_variables = self._edge_policy_network.trainable_variables
         edge_critic_variables = (
             # In this agent, the critic loss trains the observation network.
             self._edge_observation_network.trainable_variables +
             self._edge_critic_network.trainable_variables)
-        # print("edge_policy_variables")
-        # print(edge_policy_variables)
-        # print(len(edge_policy_variables))
-        # print("edge_critic_variables")
-        # print(edge_critic_variables)
-        # print(len(edge_critic_variables))
-
 
         # Compute gradients.
         replica_context = tf.distribute.get_replica_context()
-        # print("replica_context")
-        # print(replica_context)
-        # print("vehicle_policy_loss")
-        # print(vehicle_policy_loss)
-        # print("vehicle_policy_variables")
-        # print(vehicle_policy_variables)
 
         edge_policy_gradients =  average_gradients_across_replicas(
             replica_context,
@@ -460,14 +359,12 @@ class D3PGLearner(acme.Learner):
             replica_context,
             tape.gradient(edge_critic_loss, edge_critic_variables))
 
-
         vehicle_policy_gradients =  average_gradients_across_replicas(
             replica_context,
             tape.gradient(vehicle_policy_loss, vehicle_policy_variables))
         vehicle_critic_gradients =  average_gradients_across_replicas(
             replica_context,
             tape.gradient(vehicle_critic_loss, vehicle_critic_variables))
-
 
         # Delete the tape manually because of the persistent=True flag.
         del tape
@@ -541,13 +438,13 @@ class D3PGLearner(acme.Learner):
 
     def step(self):
         # Run the learning step.
-        fetches = self._step()
+        fetches = self._replicated_step()
 
         # Compute elapsed time.
         timestamp = time.time()
         elapsed_time = timestamp - self._timestamp if self._timestamp else 0
         self._timestamp = timestamp
-
+        
         # Update our counts and record it.
         counts = self._counter.increment(steps=1, walltime=elapsed_time)
         fetches.update(counts)
@@ -606,14 +503,10 @@ def average_gradients_across_replicas(replica_context, gradients):
     # Nones occur when you call tape.gradient(loss, variables) with some
     # variables that don't affect the loss.
     # See: https://github.com/tensorflow/tensorflow/issues/783
-    # print("*" * 32)
-    # print("gradients")
-    # print(gradients)
+
     gradients_without_nones = [g for g in gradients if g is not None]
     original_indices = [i for i, g in enumerate(gradients) if g is not None]
-    # print("*" * 32)
-    # print("gradients_without_nones")
-    # print(gradients_without_nones)
+
     results_without_nones = replica_context.all_reduce('mean',
                                                         gradients_without_nones)
     results = [None] * len(gradients)

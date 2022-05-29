@@ -10,7 +10,7 @@ import sonnet as snt
 
 def make_policy_network(
         action_spec,
-        policy_layer_sizes: Sequence[int] = (256, 256, 256),
+        policy_layer_sizes: Sequence[int] = (128, 128, 128),
     ) -> types.TensorTransformation:
         """Creates the networks used by the agent."""
 
@@ -29,8 +29,8 @@ def make_policy_network(
 
 def make_default_networks(
     action_spec,
-    policy_layer_sizes: Sequence[int] = (256, 256, 256),
-    critic_layer_sizes: Sequence[int] = (512, 512, 256),
+    policy_layer_sizes: Sequence[int] = (128, 128, 128),
+    critic_layer_sizes: Sequence[int] = (256, 256, 128),
     vmin: float = -150.,
     vmax: float = 150.,
     num_atoms: int = 51,
@@ -67,14 +67,14 @@ def make_default_networks(
 
 def make_default_D3PGNetworks(
     vehicle_action_spec: Optional[None] = None,
-    vehicle_policy_layer_sizes: Sequence[int] = (256, 256, 256),
-    vehicle_critic_layer_sizes: Sequence[int] = (512, 512, 256),
+    vehicle_policy_layer_sizes: Sequence[int] = (128, 128, 128),
+    vehicle_critic_layer_sizes: Sequence[int] = (256, 256, 128),
     vehicle_vmin: float = -150.,
     vehicle_vmax: float = 150.,
     vehicle_num_atoms: int = 51,
     edge_action_spec: Optional[None] = None,
-    edge_policy_layer_sizes: Sequence[int] = (256, 256, 256),
-    edge_critic_layer_sizes: Sequence[int] = (512, 512, 256),
+    edge_policy_layer_sizes: Sequence[int] = (128, 128, 128),
+    edge_critic_layer_sizes: Sequence[int] = (256, 256, 128),
     edge_vmin: float = -150.,
     edge_vmax: float = 150.,
     edge_num_atoms: int = 51,

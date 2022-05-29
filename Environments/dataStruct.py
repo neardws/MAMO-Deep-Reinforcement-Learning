@@ -1,20 +1,7 @@
 import numpy as np
 import pandas as pd
 from typing import List, Tuple, Optional
-from Log.logger import myapp
 
-def rescale_the_list_to_small_than_one(list_to_rescale: List[float], is_sum_equal_one: Optional[bool] = False) -> List[float]:
-    """ rescale the list small than one.
-    Args:
-        list_to_rescale: list to rescale.
-    Returns:
-        rescaled list.
-    """
-    if is_sum_equal_one:
-        maximum_sum = sum(list_to_rescale)
-    else:
-        maximum_sum = sum(list_to_rescale) + 0.00001
-    return [x / maximum_sum for x in list_to_rescale]   # rescale the list to small than one.
 
 class timeSlots(object):
     """The set of discrete time slots of the system"""
@@ -508,37 +495,6 @@ class edgeAction(object):
             return False
         return True
 
-    @staticmethod
-    def generate_from_np_array(
-        now_time: int,
-        edge_node: edge,
-        action_time: int,
-        network_output: np.ndarray,
-        vehicle_number: int):
-        """ generate the edge action from the neural network output.
-        Args:
-            network_output: the output of the neural network.
-        Returns:
-            the edge action.
-        """
-        bandwidth_allocation = np.zeros((vehicle_number,))
-        bandwidth = rescale_the_list_to_small_than_one(list(network_output))
-        for index, values in enumerate(bandwidth):
-            bandwidth_allocation[index] = values * edge_node.get_bandwidth()
-
-        edge_action = edgeAction(
-            edge=edge_node,
-            now_time=now_time,
-            vehicle_number=vehicle_number,
-            bandwidth_allocation=bandwidth_allocation,
-            action_time=action_time
-        )
-
-        if not edge_action.check_action(now_time):
-            raise ValueError("the edge action is invalid.")
-
-        return edge_action
-
 class applicationList(object):
     """
     This class is used to store the application list of the environment.
@@ -948,91 +904,6 @@ class vehicleAction(object):
     def get_action_time(self) -> int:
         return self._action_time
 
-    @staticmethod
-    def generate_from_np_array(
-        now_time: int,
-        vehicle_index: int,
-        vehicle_list: vehicleList,
-        information_list: informationList,
-        sensed_information_number: int,
-        network_output: np.ndarray,
-        white_gaussian_noise: int,
-        mean_channel_fading_gain: float,
-        second_moment_channel_fading_gain: float,
-        edge_location: location,
-        path_loss_exponent: int,
-        SNR_target_low_bound: float,
-        SNR_target_up_bound: float,
-        probabiliity_threshold: float,
-        action_time: int):
-        """ generate the vehicle action from the neural network output.
-
-        self._vehicle_action_size = self._sensed_information_number + self._sensed_information_number + \
-            self._sensed_information_number + 1
-            # sensed_information + sensing_frequencies + uploading_priorities + transmission_power
-
-        Args:
-            network_output: the output of the neural network.
-        Returns:
-            the vehicle action.
-        """
-        from Environments.utilities import get_minimum_transmission_power
-
-        sensed_information = np.zeros(sensed_information_number)
-        sensing_frequencies = np.zeros(sensed_information_number)
-        uploading_priorities = np.zeros(sensed_information_number)
-
-        for index, values in enumerate(network_output[:sensed_information_number]):
-            if values > 0.5:
-                sensed_information[index] = 1
-        frequencies = network_output[sensed_information_number: 2*sensed_information_number]
-        frequencies = rescale_the_list_to_small_than_one(frequencies)
-        for index, values in enumerate(frequencies):
-            if sensed_information[index] == 1:
-                sensing_frequencies[index] = (values - 0.01) / information_list.get_mean_service_time_by_vehicle_and_type(
-                    vehicle_index=vehicle_index,
-                    data_type_index=vehicle_list.get_vehicle(vehicle_index).get_information_type_canbe_sensed(index)
-                )
-        for index, values in enumerate(network_output[2*sensed_information_number: 3*sensed_information_number]):
-            if sensed_information[index] == 1:
-                uploading_priorities[index] = values
-
-        sensed_information = list(sensed_information)
-        sensing_frequencies = list(sensing_frequencies)
-        uploading_priorities = list(uploading_priorities)
-
-        SNR_target = np.random.random() * (SNR_target_up_bound - SNR_target_low_bound) + SNR_target_low_bound
-
-        minimum_transmission_power = get_minimum_transmission_power(
-            white_gaussian_noise=white_gaussian_noise,
-            mean_channel_fading_gain=mean_channel_fading_gain,
-            second_moment_channel_fading_gain=second_moment_channel_fading_gain,
-            distance=vehicle_list.get_vehicle(vehicle_index).get_vehicle_location(now_time).get_distance(edge_location),
-            path_loss_exponent=path_loss_exponent,
-            transmission_power=vehicle_list.get_vehicle(vehicle_index).get_transmission_power(),
-            SNR_target=SNR_target,
-            probabiliity_threshold=probabiliity_threshold
-        )
-
-        transmisson_power = minimum_transmission_power + network_output[-1] * \
-            (vehicle_list.get_vehicle(vehicle_index).get_transmission_power() - minimum_transmission_power)
-        
-        vehicle_action = vehicleAction(
-            vehicle_index=vehicle_index,
-            now_time=now_time,
-
-            sensed_information=sensed_information,
-            sensing_frequencies=sensing_frequencies,
-            uploading_priorities=uploading_priorities,
-            transmission_power=transmisson_power,
-
-            action_time=action_time,
-        )
-
-        if not vehicle_action.check_action(now_time, vehicle_list):
-            raise ValueError("The vehicle action is not valid.")
-
-        return vehicle_action
 
 class informationRequirements(object):
     """
