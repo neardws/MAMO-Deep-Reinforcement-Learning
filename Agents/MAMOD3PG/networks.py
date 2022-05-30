@@ -1,6 +1,6 @@
 """Shared helpers for different experiment flavours."""
 
-from typing import Mapping, Sequence, Optional
+from typing import Sequence, Optional
 from acme import types
 from acme.tf import networks
 from acme.tf import utils as tf2_utils

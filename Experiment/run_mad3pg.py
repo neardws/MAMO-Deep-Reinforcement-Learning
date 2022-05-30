@@ -26,7 +26,7 @@ def main(_):
         config=agent_config,
         environment_factory=lambda x: vehicularNetworkEnv(environment_config),
         environment_spec=spec,
-        max_actor_steps=1000,
+        max_actor_steps=5000,
         networks=networks,
         num_actors=10,
     )

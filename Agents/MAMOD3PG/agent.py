@@ -3,16 +3,16 @@ import copy
 import dataclasses
 from typing import Callable, Iterator, List, Optional, Tuple, Union, Sequence
 import acme
-from Agents.MAD3PG.environment_loop import EnvironmentLoop
+from Agents.MAMOD3PG.environment_loop import EnvironmentLoop
 from acme import adders
 from acme import core
 from acme import datasets
 from acme import types
 from acme.adders import reverb as reverb_adders
-from Agents.MAD3PG.adder import NStepTransitionAdder
-from Agents.MAD3PG import actors
-from Agents.MAD3PG import learning
-from Agents.MAD3PG import base_agent
+from Agents.MAMOD3PG.adder import NStepTransitionAdder
+from Agents.MAMOD3PG import actors
+from Agents.MAMOD3PG import learning
+from Agents.MAMOD3PG import base_agent
 from acme.tf import networks as network_utils
 from acme.tf import utils
 from acme.tf import variable_utils
@@ -26,7 +26,7 @@ import sonnet as snt
 import launchpad as lp
 import functools
 import dm_env
-from Agents.MAD3PG.networks import make_default_D3PGNetworks
+from Agents.MAMOD3PG.networks import make_default_D3PGNetworks
 
 Replicator = Union[snt.distribute.Replicator, snt.distribute.TpuReplicator]
 
@@ -60,14 +60,14 @@ class D3PGConfig:
     discount: float = 0.99
     batch_size: int = 256
     prefetch_size: int = 4
-    target_update_period: int = 100
-    vehicle_policy_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-6)
-    vehicle_critic_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-5)
-    edge_policy_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-5)
-    edge_critic_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-4)
+    target_update_period: int = 4
+    vehicle_policy_optimizer: Optional[snt.Optimizer] = None
+    vehicle_critic_optimizer: Optional[snt.Optimizer] = None
+    edge_policy_optimizer: Optional[snt.Optimizer] = None
+    edge_critic_optimizer: Optional[snt.Optimizer] = None
     min_replay_size: int = 10000
     max_replay_size: int = 1000000
-    samples_per_insert: Optional[float] = 32.0
+    samples_per_insert: Optional[float] = 8.0
     n_step: int = 1
     sigma: float = 0.3
     clipping: bool = True
@@ -168,7 +168,7 @@ class D3PGNetworks:
         return snt.Sequential(vehicle_stack), snt.Sequential(edge_stack)
 
 
-class D3PGAgent(base_agent.Agent):
+class MOD3PGAgent(base_agent.Agent):
     """D3PG Agent.
     This implements a single-process D3PG agent. This is an actor-critic algorithm
     that generates data via a behavior policy, inserts N-step transitions into
@@ -393,7 +393,7 @@ class D3PGAgent(base_agent.Agent):
         )
 
 
-class MultiAgentDistributedDDPG:
+class MAMODistributedDDPG:
     """Program definition for MAD3PG."""
     def __init__(
         self,
@@ -422,7 +422,7 @@ class MultiAgentDistributedDDPG:
         self._environment_spec = environment_spec
         self._environment_factory = environment_factory
         # Create the agent.
-        self._agent = D3PGAgent(
+        self._agent = MOD3PGAgent(
             config=self._config,
             environment=self._environment_factory(False),
             environment_spec=self._environment_spec,
