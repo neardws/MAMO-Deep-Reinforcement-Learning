@@ -37,7 +37,7 @@ class TimeStep(NamedTuple):
     discount: Any
     observation: types.NestedArray
     vehicle_observation: types.NestedArray
-
+    wights: types.NestedArray
 
     def first(self) -> bool:
         return self.step_type == StepType.FIRST
@@ -210,21 +210,21 @@ class baseEnvironment(metaclass=abc.ABCMeta):
 # Helper functions for creating TimeStep namedtuples with default settings.
 
 
-def restart(observation, vehicle_observation):
+def restart(observation, vehicle_observation, wights):
     """Returns a `TimeStep` with `step_type` set to `StepType.FIRST`."""
-    return TimeStep(StepType.FIRST, None, None, observation, vehicle_observation)
+    return TimeStep(StepType.FIRST, None, None, observation, vehicle_observation, wights)
 
 
-def transition(reward, observation, vehicle_observation, discount=1.0):
+def transition(reward, observation, vehicle_observation, wights, discount=1.0):
     """Returns a `TimeStep` with `step_type` set to `StepType.MID`."""
-    return TimeStep(StepType.MID, reward, discount, observation, vehicle_observation)
+    return TimeStep(StepType.MID, reward, discount, observation, vehicle_observation, wights)
 
 
-def termination(reward, observation, vehicle_observation):
+def termination(reward, observation, vehicle_observation, wights):
     """Returns a `TimeStep` with `step_type` set to `StepType.LAST`."""
-    return TimeStep(StepType.LAST, reward, 0.0, observation, vehicle_observation)
+    return TimeStep(StepType.LAST, reward, 0.0, observation, vehicle_observation, wights)
 
 
-def truncation(reward, observation, vehicle_observation, discount=1.0):
+def truncation(reward, observation, vehicle_observation, wights, discount=1.0):
     """Returns a `TimeStep` with `step_type` set to `StepType.LAST`."""
-    return TimeStep(StepType.LAST, reward, discount, observation, vehicle_observation)
+    return TimeStep(StepType.LAST, reward, discount, observation, vehicle_observation, wights)
