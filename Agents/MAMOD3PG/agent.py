@@ -197,6 +197,9 @@ class MOD3PGAgent(base_agent.Agent):
             online_networks = make_default_D3PGNetworks(
                 vehicle_action_spec=environment.vehicle_action_spec,
                 edge_action_spec=environment.edge_action_spec,
+                vehicle_action_number=environment._vehicle_action_size,
+                edge_action_number=environment._edge_action_size,
+                batch_size=self._config.batch_size,
             )
         else:
             online_networks = networks

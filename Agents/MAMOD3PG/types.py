@@ -48,6 +48,7 @@ class Transition(NamedTuple):
     vehicle_observation: NestedArray
     action: NestedArray
     reward: NestedArray
+    weights: NestedArray
     discount: NestedArray
     next_observation: NestedArray
     vehicle_next_observation: NestedArray

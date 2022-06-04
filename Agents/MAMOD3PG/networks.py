@@ -1,11 +1,13 @@
 """Shared helpers for different experiment flavours."""
 
+import imp
 from typing import Sequence, Optional
 from acme import types
 from acme.tf import networks
 from acme.tf import utils as tf2_utils
 import numpy as np
 import sonnet as snt
+from Agents.MAMOD3PG.dueling import DuellingMLP
 
 
 def make_policy_network(
@@ -29,17 +31,22 @@ def make_policy_network(
 
 def make_default_D3PGNetworks(
     vehicle_action_spec: Optional[None] = None,
-    vehicle_policy_layer_sizes: Sequence[int] = (256, 256, 256),
+    vehicle_policy_layer_sizes: Sequence[int] = (256, 256, 128),
     vehicle_critic_layer_sizes: Sequence[int] = (512, 512, 256),
     vehicle_vmin: float = -150.,
     vehicle_vmax: float = 150.,
     vehicle_num_atoms: int = 51,
+    vehicle_action_number: int = 31,
+            
     edge_action_spec: Optional[None] = None,
-    edge_policy_layer_sizes: Sequence[int] = (256, 256, 256),
+    edge_policy_layer_sizes: Sequence[int] = (256, 256, 128),
     edge_critic_layer_sizes: Sequence[int] = (512, 512, 256),
     edge_vmin: float = -150.,
     edge_vmax: float = 150.,
     edge_num_atoms: int = 51,
+    edge_action_number: int = 10,
+    
+    batch_size: int = 256,
 ):
     from Agents.MAD3PG.agent import D3PGNetworks
 
@@ -59,8 +66,11 @@ def make_default_D3PGNetworks(
     # Create the critic network.
     vehicle_critic_network = snt.Sequential([
         # The multiplexer concatenates the observations/actions.
-        networks.CriticMultiplexer(),
-        networks.LayerNormMLP(vehicle_critic_layer_sizes, activate_final=True),
+        DuellingMLP(
+            hidden_sizes=vehicle_critic_layer_sizes, 
+            action_number=vehicle_action_number,
+            batch_size=batch_size,
+        ),
         networks.DiscreteValuedHead(vehicle_vmin, vehicle_vmax, vehicle_num_atoms),
     ])
 
@@ -80,8 +90,11 @@ def make_default_D3PGNetworks(
     # Create the critic network.
     edge_critic_network = snt.Sequential([
         # The multiplexer concatenates the observations/actions.
-        networks.CriticMultiplexer(),
-        networks.LayerNormMLP(edge_critic_layer_sizes, activate_final=True),
+        DuellingMLP(
+            hidden_sizes=edge_critic_layer_sizes,
+            action_number=edge_action_number,
+            batch_size=batch_size,
+        ),
         networks.DiscreteValuedHead(edge_vmin, edge_vmax, edge_num_atoms),
     ])
 

@@ -1,6 +1,7 @@
 """D3PG learner implementation."""
 
 import time
+from acme.tf import networks
 from typing import Dict, Iterator, List, Optional, Union, Sequence
 import acme
 from acme.tf import losses
@@ -237,7 +238,7 @@ class D3PGLearner(acme.Learner):
             vehicles_o_t = tree.map_structure(tf.stop_gradient, vehicles_o_t)
             # the shape of vehicles_a_t is [batch_size * vehicle_number, vehicle_action_size]
             vehicles_a_t = self._target_vehicle_policy_network(vehicles_o_t)
-            
+            new_vehicles_a_t = tf.reshape(vehicles_a_t, shape=[batch_size, -1])
             
             for vehicle_index in range(self._vehicle_number):
                 # Maybe transform the observation before feeding into policy and critic.
@@ -259,11 +260,13 @@ class D3PGLearner(acme.Learner):
                 o_t = tree.map_structure(tf.stop_gradient, o_t)
 
                 # Critic learning.
-                q_tm1 = self._vehicle_critic_network(o_tm1, transitions.action[:, : self._vehicle_number * self._vehicle_action_size])
-                q_t = self._target_vehicle_critic_network(o_t, tf.reshape(vehicles_a_t, shape=[batch_size, -1]))
+                other_action = tf2_utils.batch_concat(transitions.action[:,  : vehicle_index * self._vehicle_action_size], transitions.action[:, (vehicle_index + 1) * self._vehicle_action_size : ])
+                q_tm1 = self._vehicle_critic_network(o_tm1, other_action, transitions.action[:, vehicle_index * self._vehicle_action_size : (vehicle_index + 1) * self._vehicle_action_size])
+                other_action = tf2_utils.batch_concat(new_vehicles_a_t[:, : vehicle_index * self._vehicle_action_size], new_vehicles_a_t[:, (vehicle_index + 1) * self._vehicle_action_size : ])
+                q_t = self._target_vehicle_critic_network(o_t, other_action, new_vehicles_a_t[:, vehicle_index * self._vehicle_action_size : (vehicle_index + 1) * self._vehicle_action_size])
 
                 # Critic loss.
-                vehicle_critic_loss = losses.categorical(q_tm1, transitions.reward[:, vehicle_index],
+                vehicle_critic_loss = categorical(q_tm1, transitions.reward[:, vehicle_index, :], transitions.weights,
                                                 discount * transitions.discount, q_t)
                 vehicle_critic_losses.append(vehicle_critic_loss)
 
@@ -309,18 +312,17 @@ class D3PGLearner(acme.Learner):
 
             # Critic learning.
             a_t = self._target_edge_policy_network(o_t)
-            a_t = tf.concat([tf.reshape(vehicles_a_t, shape=[batch_size, -1]), a_t], axis=1)
-            q_tm1 = self._edge_critic_network(o_tm1, transitions.action)
-            q_t = self._target_edge_critic_network(o_t, a_t)
+            q_tm1 = self._edge_critic_network(o_tm1, transitions.action[: , : self._vehicle_number * self._vehicle_action_size], transitions.action[: , self._vehicle_number * self._vehicle_action_size : ])
+            q_t = self._target_edge_critic_network(o_t, new_vehicles_a_t, a_t)
 
             # Critic loss.
-            edge_critic_loss = losses.categorical(q_tm1, transitions.reward[:, -1],
+            edge_critic_loss = categorical(q_tm1, transitions.reward[:, -1, :], transitions.weights,
                                             discount * transitions.discount, q_t)
             edge_critic_losses.append(edge_critic_loss)
             # Actor learning.
             dpg_a_t = self._edge_policy_network(o_t)
-            dpg_a_t = tf.concat([tf.reshape(vehicles_a_t, shape=[batch_size, -1]), dpg_a_t], axis=1)
-            dpg_z_t = self._edge_critic_network(o_t, dpg_a_t)
+            dpg_z_t = self._edge_critic_network(o_t, new_vehicles_a_t, dpg_a_t)
+            dpg_a_t = tf.concat([new_vehicles_a_t, dpg_a_t], axis=1)
             dpg_q_t = dpg_z_t.mean()
 
             # Actor loss. If clipping is true use dqda clipping and clip the norm.
@@ -458,6 +460,77 @@ class D3PGLearner(acme.Learner):
 
     def get_variables(self, names: List[str]) -> List[List[np.ndarray]]:
         return [tf2_utils.to_numpy(self._variables[name]) for name in names]
+
+
+def categorical(
+    q_tm1: networks.DiscreteValuedDistribution, 
+    r_t: tf.Tensor,
+    weights: tf.Tensor,
+    d_t: tf.Tensor,
+    q_t: networks.DiscreteValuedDistribution
+) -> tf.Tensor:
+    """Implements the Categorical Distributional TD(0)-learning loss."""
+    
+    """Compute the weighted reward"""
+    r_t = tf.multiply(r_t, weights)
+        
+    z_t = tf.reshape(r_t, (-1, 1)) + tf.reshape(d_t, (-1, 1)) * q_t.values
+    p_t = tf.nn.softmax(q_t.logits)
+
+    # Performs L2 projection.
+    target = tf.stop_gradient(l2_project(z_t, p_t, q_t.values))
+
+    # Calculates loss.
+    loss = tf.nn.softmax_cross_entropy_with_logits(
+        logits=q_tm1.logits, labels=target)
+
+    return loss
+
+
+# Use an old version of the l2 projection which is probably slower on CPU
+# but will run on GPUs.
+def l2_project(  # pylint: disable=invalid-name
+    Zp: tf.Tensor,
+    P: tf.Tensor,
+    Zq: tf.Tensor,
+) -> tf.Tensor:
+    """Project distribution (Zp, P) onto support Zq under the L2-metric over CDFs.
+
+    This projection works for any support Zq.
+    Let Kq be len(Zq) and Kp be len(Zp).
+
+    Args:
+        Zp: (batch_size, Kp) Support of distribution P
+        P:  (batch_size, Kp) Probability values for P(Zp[i])
+        Zq: (Kp,) Support to project onto
+
+    Returns:
+        L2 projection of (Zp, P) onto Zq.
+    """
+
+    # Asserts that Zq has no leading dimension of size 1.
+    if Zq.get_shape().ndims > 1:
+        Zq = tf.squeeze(Zq, axis=0)
+
+    # Extracts vmin and vmax and construct helper tensors from Zq.
+    vmin, vmax = Zq[0], Zq[-1]
+    d_pos = tf.concat([Zq, vmin[None]], 0)[1:]
+    d_neg = tf.concat([vmax[None], Zq], 0)[:-1]
+
+    # Clips Zp to be in new support range (vmin, vmax).
+    clipped_zp = tf.clip_by_value(Zp, vmin, vmax)[:, None, :]
+    clipped_zq = Zq[None, :, None]
+
+    # Gets the distance between atom values in support.
+    d_pos = (d_pos - Zq)[None, :, None]  # Zq[i+1] - Zq[i]
+    d_neg = (Zq - d_neg)[None, :, None]  # Zq[i] - Zq[i-1]
+
+    delta_qp = clipped_zp - clipped_zq  # Zp[j] - Zq[i]
+
+    d_sign = tf.cast(delta_qp >= 0., dtype=P.dtype)
+    delta_hat = (d_sign * delta_qp / d_pos) - ((1. - d_sign) * delta_qp / d_neg)
+    P = P[:, None, :]
+    return tf.reduce_sum(tf.clip_by_value(1. - delta_hat, 0., 1.) * P, 2)
 
 
 def get_first_available_accelerator_type(

@@ -156,7 +156,7 @@ class vehicularNetworkEnv(baseEnvironment):
         self._min_cost: float = 100000000
 
         self._reward: np.ndarray = np.zeros(shape=(self._reward_size, self._config.wighting_number))
-        self._wights = np.zeros(shape=(self._config.wighting_number,))
+        self._weights = np.zeros(shape=(self._config.weighting_number,))
         
         self._information_in_edge: List[List[informationPacket]] = []
 
@@ -254,7 +254,7 @@ class vehicularNetworkEnv(baseEnvironment):
             is_output_two_dimension=True,
         )
         self.generate_weights()
-        return restart(observation=self._observation(), vehicle_observation=vehicle_observation, wights=self._wights)
+        return restart(observation=self._observation(), vehicle_observation=vehicle_observation, weights=self._weights)
 
     def step(self, action: np.ndarray):
         """Run one timestep of the environment's dynamics. When end of
@@ -349,10 +349,10 @@ class vehicularNetworkEnv(baseEnvironment):
         # check for termination
         if self._time_slots.is_end():
             self._reset_next_step = True
-            return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation, wights=self._wights)
+            return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation, weights=self._weights)
         self._time_slots.add_time()
         
-        return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation, wights=self._wights)
+        return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation, weights=self._weights)
 
     def transform_action_array_to_actions(self, action: np.ndarray) -> Tuple[int, List[List[int]], List[vehicleAction], edgeAction]:
         """Transform the action array to the actions of vehicles and the edge node.
@@ -648,8 +648,8 @@ class vehicularNetworkEnv(baseEnvironment):
         for i in range(len(timeliness_views_normalized)):
             if timeliness_views_normalized[i] != -1 and consistency_views_normalized[i] != -1:
                 age_of_view.append(
-                    self._config.wight_of_timeliness * timeliness_views_normalized[i] + \
-                    self._config.wight_of_consistency * consistency_views_normalized[i]
+                    self._config.weight_of_timeliness * timeliness_views_normalized[i] + \
+                    self._config.weight_of_consistency * consistency_views_normalized[i]
                 )
             if  redundancy_views_normalized[i] != -1:
                 redundancy_of_view.append(redundancy_views_normalized[i])
@@ -788,6 +788,17 @@ class vehicularNetworkEnv(baseEnvironment):
             dtype=float, 
             name='rewards'
         )
+    
+    def weights_spec(self):
+        """Define and return the weight space."""
+        return specs.BoundedArray(
+            shape=(self._config.wighting_number, ), 
+            dtype=float, 
+            minimum=np.zeros((self._config.wighting_number, )),
+            maximum=np.ones((self._config.wighting_number, )),
+            name='weights'
+        )
+    
     
     def _observation(self) -> np.ndarray:
         """Return the observation of the environment."""
@@ -1236,7 +1247,7 @@ class vehicularNetworkEnv(baseEnvironment):
                     all_weights.append(i_w)
             prev_t = target + 0.
         for i in range(self._config.wighting_number):
-            self._wights[i] = all_weights[i]
+            self._weights[i] = all_weights[i]
 
 
 Array = specs.Array
@@ -1254,6 +1265,7 @@ class EnvironmentSpec(NamedTuple):
     vehicle_actions: NestedSpec
     edge_actions: NestedSpec
     rewards: NestedSpec
+    weights: NestedSpec
     critic_vehicle_actions: NestedSpec
     critic_edge_actions: NestedSpec
     discounts: NestedSpec
@@ -1270,6 +1282,7 @@ def make_environment_spec(environment: vehicularNetworkEnv) -> EnvironmentSpec:
         vehicle_actions=environment.vehicle_action_spec(),
         edge_actions=environment.edge_action_spec(),
         rewards=environment.reward_spec(),
+        weights=environment.weights_spec(),
         critic_vehicle_actions=environment.vehicle_critic_network_action_spec(),
         critic_edge_actions=environment.edge_critic_network_action_spec(),
         discounts=environment.discount_spec())

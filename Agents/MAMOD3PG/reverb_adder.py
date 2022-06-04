@@ -25,6 +25,7 @@ class Step(NamedTuple):
     vehicle_observation: types.NestedArray
     action: types.NestedArray
     reward: types.NestedArray
+    weights: types.NestedArray
     discount: types.NestedArray
     start_of_episode: StartOfEpisodeType
     extras: types.NestedArray = ()
@@ -40,6 +41,7 @@ class PriorityFnInput(NamedTuple):
     vehicle_observations: types.NestedArray
     actions: types.NestedArray
     rewards: types.NestedArray
+    weights: types.NestedArray
     discounts: types.NestedArray
     start_of_episode: types.NestedArray
     extras: types.NestedArray
@@ -178,6 +180,7 @@ class ReverbAdder(base_adder.Adder):
             # Observation was passed at the previous add call.
             action=action,
             reward=next_timestep.reward,
+            weights=next_timestep.weights,
             discount=next_timestep.discount,
             # Start of episode indicator was passed at the previous add call.
             **({'extras': extras} if has_extras else {})
@@ -228,6 +231,7 @@ class ReverbAdder(base_adder.Adder):
             vehicle_observation=environment_spec.vehicle_all_observations,
             action=environment_spec.actions,
             reward=environment_spec.rewards,
+            weights=environment_spec.weights,
             discount=environment_spec.discounts,
             start_of_episode=Array(shape=(), dtype=bool),
             extras=extras_spec)
