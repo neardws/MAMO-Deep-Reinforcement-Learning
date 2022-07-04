@@ -209,7 +209,7 @@ class D3PGLearner(acme.Learner):
         self._vehicle_observation_size = vehicle_observation_size
         self._vehicle_action_size = vehicle_action_size
 
-    @tf.function
+    # @tf.function
     def _step(self, sample) -> Dict[str, tf.Tensor]:
         transitions: types.Transition = sample.data  # Assuming ReverbSample.
 
@@ -263,6 +263,8 @@ class D3PGLearner(acme.Learner):
                 q_t = self._target_vehicle_critic_network(o_t, tf.reshape(vehicles_a_t, shape=[batch_size, -1]))
 
                 # Critic loss.
+                # print("q_tm1: ", q_tm1)
+                # print("transitions.reward: ", transitions.reward[:, vehicle_index])
                 vehicle_critic_loss = losses.categorical(q_tm1, transitions.reward[:, vehicle_index],
                                                 discount * transitions.discount, q_t)
                 vehicle_critic_losses.append(vehicle_critic_loss)

@@ -95,16 +95,16 @@ class EnvironmentLoop(base.Worker):
                 observer.observe(self._environment, timestep, action)
             if self._should_update:
                 self._actor.update()
-        # Book-keeping.
-        episode_steps += 1
-        # Equivalent to: episode_return += timestep.reward
-        # We capture the return value because if timestep.reward is a JAX
-        # DeviceArray, episode_return will not be mutated in-place. (In all other
-        # cases, the returned episode_return will be the same object as the
-        # argument episode_return.)
-        episode_return = tree.map_structure(operator.iadd,
-                                            episode_return,
-                                            timestep.reward)
+            # Book-keeping.
+            episode_steps += 1
+            # Equivalent to: episode_return += timestep.reward
+            # We capture the return value because if timestep.reward is a JAX
+            # DeviceArray, episode_return will not be mutated in-place. (In all other
+            # cases, the returned episode_return will be the same object as the
+            # argument episode_return.)
+            episode_return = tree.map_structure(operator.iadd,
+                                                episode_return,
+                                                timestep.reward)
 
         # Record counts.
         counts = self._counter.increment(episodes=1, steps=episode_steps)

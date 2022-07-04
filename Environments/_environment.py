@@ -2,7 +2,7 @@
 
 import abc
 import enum
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Optional
 from Agents.MAD3PG import types
 from dm_env import specs
 import numpy as np
@@ -37,7 +37,7 @@ class TimeStep(NamedTuple):
     discount: Any
     observation: types.NestedArray
     vehicle_observation: types.NestedArray
-    weights: types.NestedArray
+    weights: Optional[types.NestedArray]=None
 
     def first(self) -> bool:
         return self.step_type == StepType.FIRST
@@ -210,21 +210,21 @@ class baseEnvironment(metaclass=abc.ABCMeta):
 # Helper functions for creating TimeStep namedtuples with default settings.
 
 
-def restart(observation, vehicle_observation, weights):
+def restart(observation, vehicle_observation, weights: Optional[types.NestedArray]= None):
     """Returns a `TimeStep` with `step_type` set to `StepType.FIRST`."""
     return TimeStep(StepType.FIRST, None, None, observation, vehicle_observation, weights)
 
 
-def transition(reward, observation, vehicle_observation, weights, discount=1.0):
+def transition(reward, observation, vehicle_observation, weights: Optional[types.NestedArray]= None, discount=1.0):
     """Returns a `TimeStep` with `step_type` set to `StepType.MID`."""
     return TimeStep(StepType.MID, reward, discount, observation, vehicle_observation, weights)
 
 
-def termination(reward, observation, vehicle_observation, weights):
+def termination(reward, observation, vehicle_observation, weights: Optional[types.NestedArray]= None):
     """Returns a `TimeStep` with `step_type` set to `StepType.LAST`."""
     return TimeStep(StepType.LAST, reward, 0.0, observation, vehicle_observation, weights)
 
 
-def truncation(reward, observation, vehicle_observation, weights, discount=1.0):
+def truncation(reward, observation, vehicle_observation, weights: Optional[types.NestedArray]= None, discount=1.0):
     """Returns a `TimeStep` with `step_type` set to `StepType.LAST`."""
     return TimeStep(StepType.LAST, reward, discount, observation, vehicle_observation, weights)

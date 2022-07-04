@@ -4,7 +4,8 @@ sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
 import Agents.MAMOD3PG.environment_loop as environment_loop
 from absl.testing import absltest
 from Agents.MAMOD3PG import actors
-from Test.environmentConfig_test import vehicularNetworkEnvConfig
+from Environments.environmentConfig import vehicularNetworkEnvConfig
+# from Test.environmentConfig_test import vehicularNetworkEnvConfig
 from Environments.environment import vehicularNetworkEnv, make_environment_spec
 from Agents.MAMOD3PG.networks import make_policy_network
 
@@ -18,7 +19,7 @@ class ActorTest(absltest.TestCase):
         config.vehicle_list_seeds += [i for i in range(config.vehicle_number)]
         config.view_list_seeds += [i for i in range(config.view_number)]
 
-        env = vehicularNetworkEnv(config)
+        env = vehicularNetworkEnv(config, is_reward_matrix=True)
 
         env_spec = make_environment_spec(env)
 

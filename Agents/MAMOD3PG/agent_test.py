@@ -4,9 +4,10 @@ sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
 
 from Agents.MAMOD3PG.environment_loop import EnvironmentLoop
 from acme.utils import counting
-from Agents.MAMOD3PG.agent import D3PGConfig, D3PGAgent
+from Agents.MAMOD3PG.agent import D3PGConfig, MOD3PGAgent
 from Environments.environment import vehicularNetworkEnv, make_environment_spec
-from Test.environmentConfig_test import vehicularNetworkEnvConfig
+from Environments.environmentConfig import vehicularNetworkEnvConfig
+# from Test.environmentConfig_test import vehicularNetworkEnvConfig
 from absl.testing import absltest
 from Agents.MAMOD3PG.networks import make_default_D3PGNetworks
 
@@ -19,7 +20,7 @@ class D3PGTest(absltest.TestCase):
         env_config.vehicle_list_seeds += [i for i in range(env_config.vehicle_number)]
         env_config.view_list_seeds += [i for i in range(env_config.view_number)]
 
-        env = vehicularNetworkEnv(env_config)
+        env = vehicularNetworkEnv(env_config, is_reward_matrix=True)
 
         spec = make_environment_spec(env)
 
@@ -32,9 +33,10 @@ class D3PGTest(absltest.TestCase):
         agent_config = D3PGConfig(
             batch_size=10, samples_per_insert=2, min_replay_size=10)
         counter = counting.Counter()
-        agent = D3PGAgent(
+        agent = MOD3PGAgent(
             config=agent_config,
             environment=env,
+            environment_spec=spec,
             networks=networks,
         )
 

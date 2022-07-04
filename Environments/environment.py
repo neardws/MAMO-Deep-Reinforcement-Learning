@@ -9,50 +9,73 @@ from Environments._environment import baseEnvironment, TimeStep, restart, termin
 import Environments.environmentConfig as env_config
 from Environments.utilities import sensingAndQueuing, v2iTransmission
 
-
 class vehicularNetworkEnv(baseEnvironment):
     """Vehicular Network Environment built on the dm_env framework."""
     reward_history: List[Dict[str, float]] = None
-
-    # TODO: refactor this function
+    is_reward_matrix: bool = False
+        
     @classmethod
-    def init_reward_history(cls, time_slots_number) -> None:
+    def init_reward_history(cls, time_slots_number, is_reward_matrix) -> None:
+        cls.is_reward_matrix = is_reward_matrix
         """Set the reward history."""
-        cls.reward_history = [{
-            "aov_max": -100, 
-            "aov_min": 100,
-            "redundancy_max": -100,
-            "redundancy_min": 100,
-            "cost_max": -100,
-            "cost_min": 100,
-        } for _ in range(time_slots_number)]
+        if cls.is_reward_matrix:
+            cls.reward_history = [{
+                "aov_max": -100, 
+                "aov_min": 100,
+                "redundancy_max": -100,
+                "redundancy_min": 100,
+                "cost_max": -100,
+                "cost_min": 100,
+            } for _ in range(time_slots_number)]
+        else:
+            cls.reward_history = [{"max": -100, "min": 100} for _ in range(time_slots_number)]
+            
+    @classmethod
+    def append_reward_at_now(
+        cls, now: int, 
+        reward: Optional[float]=None, 
+        aov: Optional[float]=None, 
+        redundancy: Optional[float]=None, 
+        cost: Optional[float]=None
+    ) -> None:
+        if cls.is_reward_matrix:
+            if aov > cls.reward_history[now]["aov_max"]:
+                cls.reward_history[now]["aov_max"] = aov
+            if aov < cls.reward_history[now]["aov_min"]:
+                cls.reward_history[now]["aov_min"] = aov
+            if redundancy > cls.reward_history[now]["redundancy_max"]:
+                cls.reward_history[now]["redundancy_max"] = redundancy
+            if redundancy < cls.reward_history[now]["redundancy_min"]:
+                cls.reward_history[now]["redundancy_min"] = redundancy
+            if cost > cls.reward_history[now]["cost_max"]:
+                cls.reward_history[now]["cost_max"] = cost
+            if cost < cls.reward_history[now]["cost_min"]:
+                cls.reward_history[now]["cost_min"] = cost
+        else:
+            if reward > cls.reward_history[now]["max"]:
+                cls.reward_history[now]["max"] = reward
+            if reward < cls.reward_history[now]["min"]:
+                cls.reward_history[now]["min"] = reward
 
     @classmethod
-    def append_reward_at_now(cls, now: int, aov: float, redundancy: float, cost: float) -> None:
-        if aov > cls.reward_history[now]["aov_max"]:
-            cls.reward_history[now]["aov_max"] = aov
-        if aov < cls.reward_history[now]["aov_min"]:
-            cls.reward_history[now]["aov_min"] = aov
-        if redundancy > cls.reward_history[now]["redundancy_max"]:
-            cls.reward_history[now]["redundancy_max"] = redundancy
-        if redundancy < cls.reward_history[now]["redundancy_min"]:
-            cls.reward_history[now]["redundancy_min"] = redundancy
-        if cost > cls.reward_history[now]["cost_max"]:
-            cls.reward_history[now]["cost_max"] = cost
-        if cost < cls.reward_history[now]["cost_min"]:
-            cls.reward_history[now]["cost_min"] = cost
+    def get_min_reward_at_now(cls, now: int):
+        if cls.is_reward_matrix:
+            return cls.reward_history[now]["aov_min"], cls.reward_history[now]["redundancy_min"], cls.reward_history[now]["cost_min"]
+        else:
+            return cls.reward_history[now]["min"]
 
     @classmethod
-    def get_min_reward_at_now(cls, now: int) -> Tuple[float]:
-        return cls.reward_history[now]["aov_min"], cls.reward_history[now]["redundancy_min"], cls.reward_history[now]["cost_min"]
-
-    @classmethod
-    def get_max_reward_at_now(cls, now: int) -> Tuple[float]:
-        return cls.reward_history[now]["aov_max"], cls.reward_history[now]["redundancy_max"], cls.reward_history[now]["cost_max"]
-
+    def get_max_reward_at_now(cls, now: int):
+        if cls.is_reward_matrix:
+            return cls.reward_history[now]["aov_max"], cls.reward_history[now]["redundancy_max"], cls.reward_history[now]["cost_max"]
+        else:
+            return cls.reward_history[now]["max"]
+        
     def __init__(
         self, 
-        envConfig: env_config.vehicularNetworkEnvConfig = None) -> None:
+        envConfig: env_config.vehicularNetworkEnvConfig = None,
+        is_reward_matrix: bool = False,
+    ) -> None:
         """Initialize the environment."""
         if envConfig is None:
             self._config = env_config.vehicularNetworkEnvConfig()
@@ -60,7 +83,7 @@ class vehicularNetworkEnv(baseEnvironment):
             self._config = envConfig
 
         if vehicularNetworkEnv.reward_history is None:
-            vehicularNetworkEnv.init_reward_history(self._config.time_slot_number)
+            vehicularNetworkEnv.init_reward_history(self._config.time_slot_number, is_reward_matrix)
 
         self._time_slots: timeSlots = timeSlots(
             start=self._config.time_slot_start,
@@ -154,8 +177,12 @@ class vehicularNetworkEnv(baseEnvironment):
         self._min_redundancy: float = 100000000
         self._max_cost: float = -1
         self._min_cost: float = 100000000
-
-        self._reward: np.ndarray = np.zeros(shape=(self._reward_size, self._config.wighting_number))
+        
+        if vehicularNetworkEnv.is_reward_matrix:
+            self._reward: np.ndarray = np.zeros(shape=(self._reward_size, self._config.weighting_number))
+        else:
+            self._reward: np.ndarray = np.zeros(shape=(self._reward_size,))
+            
         self._weights = np.zeros(shape=(self._config.weighting_number,))
         
         self._information_in_edge: List[List[informationPacket]] = []
@@ -274,85 +301,137 @@ class vehicularNetworkEnv(baseEnvironment):
             information_type_required_by_views_at_now=information_type_required_by_views_at_now,
             vehicle_actions=vehicle_actions,
             edge_action=edge_action,
-        )        
-        baseline_aov, baseline_redundancy, baseline_cost = self.compute_reward(
+        )
+        if vehicularNetworkEnv.is_reward_matrix:
+            baseline_aov, baseline_redundancy, baseline_cost = self.compute_reward(
+                    information_objects_ordered_by_views=information_objects[0],
+                    vehicle_actions=vehicle_actions,
+                )
+            self._reward[-1][0] = baseline_aov
+            self._reward[-1][1] = baseline_redundancy
+            self._reward[-1][2] = baseline_cost
+            
+            for i in range(self._config.vehicle_number):
+                vehicle_baseline_aov, vehicle_baseline_redundancy, vehicle_baseline_cost = self.compute_reward(
+                    information_objects_ordered_by_views=information_objects[i + 1],
+                    vehicle_actions=vehicle_actions,
+                    vehicle_index=i,
+                )
+                self._reward[i][0] = -1 if baseline_aov - vehicle_baseline_aov < -1 else baseline_aov - vehicle_baseline_aov
+                self._reward[i][0] = 1 if baseline_aov - vehicle_baseline_aov > 1 else baseline_aov - vehicle_baseline_aov
+                
+                self._reward[i][1] = -1 if baseline_redundancy - vehicle_baseline_redundancy < -1 else baseline_redundancy - vehicle_baseline_redundancy
+                self._reward[i][1] = 1 if baseline_redundancy - vehicle_baseline_redundancy > 1 else baseline_redundancy - vehicle_baseline_redundancy
+                
+                self._reward[i][2] = -1 if baseline_cost - vehicle_baseline_cost < -1 else baseline_cost - vehicle_baseline_cost
+                self._reward[i][2] = 1 if baseline_cost - vehicle_baseline_cost > 1 else baseline_cost - vehicle_baseline_cost
+            
+            aov_min, redundancy_min, cost_min = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
+            aov_max, redundancy_max, cost_max = vehicularNetworkEnv.get_max_reward_at_now(int(self._time_slots.now()))
+            if aov_min != 100 and aov_max != -100:
+                if (aov_max - aov_min) == 0:
+                    edge_aov = baseline_aov - aov_min
+                else:
+                    edge_aov = baseline_aov -  0.5 * (aov_max + aov_min)
+            else:
+                edge_aov = baseline_aov
+            if redundancy_min != 100 and redundancy_max != -100:
+                if (redundancy_max - redundancy_min) == 0:
+                    edge_redundancy = baseline_redundancy - redundancy_min
+                else:
+                    edge_redundancy = baseline_redundancy - 0.5 * (redundancy_max + redundancy_min)
+            else:
+                edge_redundancy = baseline_redundancy
+            if cost_min != 100 and cost_max != -100:
+                if (cost_max - cost_min) == 0:
+                    edge_cost = baseline_cost - cost_min
+                else:
+                    edge_cost = baseline_cost - 0.5 * (cost_max + cost_min)
+            else:
+                edge_cost = baseline_cost
+            
+            self._reward[-2][0] = -1 if edge_aov < -1 else edge_aov
+            self._reward[-2][0] = 1 if edge_aov > 1 else edge_aov
+            self._reward[-2][1] = -1 if edge_redundancy < -1 else edge_redundancy
+            self._reward[-2][1] = 1 if edge_redundancy > 1 else edge_redundancy
+            self._reward[-2][2] = -1 if edge_cost < -1 else edge_cost
+            self._reward[-2][2] = 1 if edge_cost > 1 else edge_cost
+
+            """Update the information in the edge node."""
+            self.update_information_in_edge(
                 information_objects_ordered_by_views=information_objects[0],
-                vehicle_actions=vehicle_actions,
             )
-        self._reward[-1][0] = baseline_aov
-        self._reward[-1][1] = baseline_redundancy
-        self._reward[-1][2] = baseline_cost
-        
-        for i in range(self._config.vehicle_number):
-            vehicle_baseline_aov, vehicle_baseline_redundancy, vehicle_baseline_cost = self.compute_reward(
-                information_objects_ordered_by_views=information_objects[i + 1],
-                vehicle_actions=vehicle_actions,
-                vehicle_index=i,
+            # myapp.debug(f"\ninformation_objects_ordered_by_views:\n{self.string_of_information_objects_ordered_by_views(information_objects_ordered_by_views)}")
+            observation = self._observation()
+
+            vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
+                vehicle_number=self._config.vehicle_number,
+                information_number=self._config.information_number,
+                sensed_information_number=self._config.sensed_information_number,
+                vehicle_observation_size=self._vehicle_observation_size,
+                observation=observation,
+                is_output_two_dimension=True,
             )
-            self._reward[i][0] = -1 if baseline_aov - vehicle_baseline_aov < -1 else baseline_aov - vehicle_baseline_aov
-            self._reward[i][0] = 1 if baseline_aov - vehicle_baseline_aov > 1 else baseline_aov - vehicle_baseline_aov
+
+            self.generate_weights()
+            # check for termination
+            if self._time_slots.is_end():
+                self._reset_next_step = True
+                return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation, weights=self._weights)
+            self._time_slots.add_time()
             
-            self._reward[i][1] = -1 if baseline_redundancy - vehicle_baseline_redundancy < -1 else baseline_redundancy - vehicle_baseline_redundancy
-            self._reward[i][1] = 1 if baseline_redundancy - vehicle_baseline_redundancy > 1 else baseline_redundancy - vehicle_baseline_redundancy
+            return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation, weights=self._weights)
+    
+        else:       
+            baseline_reward = self.compute_reward(
+                    information_objects_ordered_by_views=information_objects[0],
+                    vehicle_actions=vehicle_actions,
+                )
+            self._reward[-1] = baseline_reward
             
-            self._reward[i][2] = -1 if baseline_cost - vehicle_baseline_cost < -1 else baseline_cost - vehicle_baseline_cost
-            self._reward[i][2] = 1 if baseline_cost - vehicle_baseline_cost > 1 else baseline_cost - vehicle_baseline_cost
-        
-        aov_min, redundancy_min, cost_min = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
-        aov_max, redundancy_max, cost_max = vehicularNetworkEnv.get_max_reward_at_now(int(self._time_slots.now()))
-        if aov_min != 100 and aov_max != -100:
-            if (aov_max - aov_min) == 0:
-                edge_aov = baseline_aov - aov_min
+            
+            for i in range(self._config.vehicle_number):
+                vehicle_baseline_reward = self.compute_reward(
+                    information_objects_ordered_by_views=information_objects[i + 1],
+                    vehicle_actions=vehicle_actions,
+                    vehicle_index=i,
+                )
+                vehicle_reward = baseline_reward - vehicle_baseline_reward
+                self._reward[i] = vehicle_reward
+            
+            min_reward_history_at_now = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
+            max_reward_history_at_now = vehicularNetworkEnv.get_max_reward_at_now(int(self._time_slots.now()))
+            if min_reward_history_at_now != 100 and max_reward_history_at_now != -100:
+                if (max_reward_history_at_now - min_reward_history_at_now) == 0:
+                    edge_reward = baseline_reward - min_reward_history_at_now
+                else:
+                    edge_reward = (baseline_reward - min_reward_history_at_now) / (max_reward_history_at_now - min_reward_history_at_now)
             else:
-                edge_aov = baseline_aov -  0.5 * (aov_max + aov_min)
-        else:
-            edge_aov = baseline_aov
-        if redundancy_min != 100 and redundancy_max != -100:
-            if (redundancy_max - redundancy_min) == 0:
-                edge_redundancy = baseline_redundancy - redundancy_min
-            else:
-                edge_redundancy = baseline_redundancy - 0.5 * (redundancy_max + redundancy_min)
-        else:
-            edge_redundancy = baseline_redundancy
-        if cost_min != 100 and cost_max != -100:
-            if (cost_max - cost_min) == 0:
-                edge_cost = baseline_cost - cost_min
-            else:
-                edge_cost = baseline_cost - 0.5 * (cost_max + cost_min)
-        else:
-            edge_cost = baseline_cost
-        
-        self._reward[-2][0] = -1 if edge_aov < -1 else edge_aov
-        self._reward[-2][0] = 1 if edge_aov > 1 else edge_aov
-        self._reward[-2][1] = -1 if edge_redundancy < -1 else edge_redundancy
-        self._reward[-2][1] = 1 if edge_redundancy > 1 else edge_redundancy
-        self._reward[-2][2] = -1 if edge_cost < -1 else edge_cost
-        self._reward[-2][2] = 1 if edge_cost > 1 else edge_cost
+                edge_reward = baseline_reward
+            self._reward[-2] = edge_reward
 
-        """Update the information in the edge node."""
-        self.update_information_in_edge(
-            information_objects_ordered_by_views=information_objects[0],
-        )
-        # myapp.debug(f"\ninformation_objects_ordered_by_views:\n{self.string_of_information_objects_ordered_by_views(information_objects_ordered_by_views)}")
-        observation = self._observation()
+            """Update the information in the edge node."""
+            self.update_information_in_edge(
+                information_objects_ordered_by_views=information_objects[0],
+            )
+            # myapp.debug(f"\ninformation_objects_ordered_by_views:\n{self.string_of_information_objects_ordered_by_views(information_objects_ordered_by_views)}")
+            observation = self._observation()
 
-        vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
-            vehicle_number=self._config.vehicle_number,
-            information_number=self._config.information_number,
-            sensed_information_number=self._config.sensed_information_number,
-            vehicle_observation_size=self._vehicle_observation_size,
-            observation=observation,
-            is_output_two_dimension=True,
-        )
+            vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
+                vehicle_number=self._config.vehicle_number,
+                information_number=self._config.information_number,
+                sensed_information_number=self._config.sensed_information_number,
+                vehicle_observation_size=self._vehicle_observation_size,
+                observation=observation,
+                is_output_two_dimension=True,
+            )
 
-        self.generate_weights()
-        # check for termination
-        if self._time_slots.is_end():
-            self._reset_next_step = True
-            return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation, weights=self._weights)
-        self._time_slots.add_time()
-        
-        return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation, weights=self._weights)
+            # check for termination
+            if self._time_slots.is_end():
+                self._reset_next_step = True
+                return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
+            self._time_slots.add_time()
+            return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
 
     def transform_action_array_to_actions(self, action: np.ndarray) -> Tuple[int, List[List[int]], List[vehicleAction], edgeAction]:
         """Transform the action array to the actions of vehicles and the edge node.
@@ -504,13 +583,12 @@ class vehicularNetworkEnv(baseEnvironment):
                 self._information_in_edge[infor.get_type()].append(infor)
                 self._information_in_edge[infor.get_type()].sort(key=lambda x: x.get_received_moment(), reverse=True)
     
-    # TODO: refactor the following functions
     def compute_reward(
         self,
         information_objects_ordered_by_views: List[List[informationPacket]],
         vehicle_actions: List[vehicleAction],
         vehicle_index: int = -1
-    ) -> Tuple[float]:
+    ):
         """
             return:
                 the reward of the different dim.
@@ -640,47 +718,89 @@ class vehicularNetworkEnv(baseEnvironment):
                 )
             else:
                 cost_views_normalized.append(-1)
+        # print("timeliness_views_normalized: ", timeliness_views_normalized)
+        # print("consistency_views_normalized: ", consistency_views_normalized)
+        # print("redundancy_views_normalized: ", redundancy_views_normalized)
+        # print("cost_views_normalized: ", cost_views_normalized)
         
-        """Compute the age of view."""
-        age_of_view = []
-        redundancy_of_view = []
-        cost_of_view = []
-        for i in range(len(timeliness_views_normalized)):
-            if timeliness_views_normalized[i] != -1 and consistency_views_normalized[i] != -1:
-                age_of_view.append(
-                    self._config.weight_of_timeliness * timeliness_views_normalized[i] + \
-                    self._config.weight_of_consistency * consistency_views_normalized[i]
+    
+        if vehicularNetworkEnv.is_reward_matrix:
+        
+            """Compute the age of view."""
+            age_of_view = []
+            redundancy_of_view = []
+            cost_of_view = []
+            for i in range(len(timeliness_views_normalized)):
+                if timeliness_views_normalized[i] != -1 and consistency_views_normalized[i] != -1:
+                    age_of_view.append(
+                        self._config.weight_of_timeliness * timeliness_views_normalized[i] + \
+                        self._config.weight_of_consistency * consistency_views_normalized[i]
+                    )
+                if  redundancy_views_normalized[i] != -1:
+                    redundancy_of_view.append(redundancy_views_normalized[i])
+                if  cost_views_normalized[i] != -1:
+                    cost_of_view.append(cost_views_normalized[i])
+
+            
+            """Normalize the age of view."""
+            if len(age_of_view) > 0:
+                normalized_age_of_view = float(1.0 - sum(age_of_view) / len(age_of_view))
+            else:
+                normalized_age_of_view = 1
+            normalized_age_of_view = 0 if normalized_age_of_view < 0 else normalized_age_of_view
+            normalized_age_of_view = 1 if normalized_age_of_view > 1 else normalized_age_of_view
+
+            """Normalize the redundancy of view."""
+            if len(redundancy_of_view) > 0:
+                normalized_redundancy_of_view = float(1.0 - sum(redundancy_of_view) / len(redundancy_of_view))
+            else:
+                normalized_redundancy_of_view = 1
+            normalized_redundancy_of_view = 0 if normalized_redundancy_of_view < 0 else normalized_redundancy_of_view
+            normalized_redundancy_of_view = 1 if normalized_redundancy_of_view > 1 else normalized_redundancy_of_view
+            
+            """Normalize the cost of view."""
+            if len(cost_of_view) > 0:
+                normalized_cost_of_view = float(1.0 - sum(cost_of_view) / len(cost_of_view))
+            else:
+                normalized_cost_of_view = 1
+            normalized_cost_of_view = 0 if normalized_cost_of_view < 0 else normalized_cost_of_view
+            normalized_cost_of_view = 1 if normalized_cost_of_view > 1 else normalized_cost_of_view
+            
+            if vehicle_index == -1:
+                vehicularNetworkEnv.append_reward_at_now(
+                    now=int(self._time_slots.now()),
+                    aov=normalized_age_of_view,
+                    redundancy=normalized_redundancy_of_view,
+                    cost=normalized_cost_of_view,
                 )
-            if  redundancy_views_normalized[i] != -1:
-                redundancy_of_view.append(redundancy_views_normalized[i])
-            if  cost_views_normalized[i] != -1:
-                cost_of_view.append(cost_views_normalized[i])
+            
+            return normalized_age_of_view, normalized_redundancy_of_view, normalized_cost_of_view
 
-        """Normalize the age of view."""
-        normalized_age_of_view = float(1.0 - sum(age_of_view) / len(age_of_view))
-        normalized_age_of_view = 0 if normalized_age_of_view < 0 else normalized_age_of_view
-        normalized_age_of_view = 1 if normalized_age_of_view > 1 else normalized_age_of_view
+        else:
+            """Compute the age of view."""
+            age_of_view = []
+            for i in range(len(timeliness_views_normalized)):
+                if timeliness_views_normalized[i] != -1 and consistency_views_normalized[i] != -1 and redundancy_views_normalized[i] != -1 and cost_views_normalized[i] != -1:
+                    age_of_view.append(
+                        self._config.static_weight_of_timeliness * timeliness_views_normalized[i] + \
+                        self._config.static_weight_of_consistency * consistency_views_normalized[i] + \
+                        self._config.static_weight_of_redundancy * redundancy_views_normalized[i] + \
+                        self._config.static_weight_of_cost * cost_views_normalized[i]
+                    )
 
-        """Normalize the redundancy of view."""
-        normalized_redundancy_of_view = float(1.0 - sum(redundancy_of_view) / len(redundancy_of_view))
-        normalized_redundancy_of_view = 0 if normalized_redundancy_of_view < 0 else normalized_redundancy_of_view
-        normalized_redundancy_of_view = 1 if normalized_redundancy_of_view > 1 else normalized_redundancy_of_view
-        
-        """Normalize the cost of view."""
-        normalized_cost_of_view = float(1.0 - sum(cost_of_view) / len(cost_of_view))
-        normalized_cost_of_view = 0 if normalized_cost_of_view < 0 else normalized_cost_of_view
-        normalized_cost_of_view = 1 if normalized_cost_of_view > 1 else normalized_cost_of_view
-        
-        
-        if vehicle_index == -1:
-            vehicularNetworkEnv.append_reward_at_now(
-                now=int(self._time_slots.now()),
-                aov=normalized_age_of_view,
-                redundancy=normalized_redundancy_of_view,
-                cost=normalized_cost_of_view,
-            )
-        
-        return normalized_age_of_view, normalized_redundancy_of_view, normalized_cost_of_view
+            if len(age_of_view) == 0:
+                return -1
+
+            reward = float(1.0 - sum(age_of_view) / len(age_of_view))
+            reward = 0 if reward < 0 else reward
+            reward = 1 if reward > 1 else reward
+
+            if vehicle_index == -1:
+                vehicularNetworkEnv.append_reward_at_now(
+                    now=int(self._time_slots.now()),
+                    reward=reward,
+                )
+            return reward
 
     """Define the observation spaces of vehicle."""
     def vehicle_observation_spec(self) -> specs.BoundedArray:
@@ -783,22 +903,28 @@ class vehicularNetworkEnv(baseEnvironment):
 
     def reward_spec(self):
         """Define and return the reward space."""
-        return specs.Array(
-            shape=(self._reward_size, self._config.wighting_number), 
-            dtype=float, 
-            name='rewards'
-        )
+        if vehicularNetworkEnv.is_reward_matrix:
+            return specs.Array(
+                shape=(self._reward_size, self._config.weighting_number), 
+                dtype=float, 
+                name='rewards'
+            )
+        else:
+            return specs.Array(
+                shape=(self._reward_size,), 
+                dtype=float, 
+                name='rewards'
+            )
     
     def weights_spec(self):
         """Define and return the weight space."""
         return specs.BoundedArray(
-            shape=(self._config.wighting_number, ), 
+            shape=(self._config.weighting_number, ), 
             dtype=float, 
-            minimum=np.zeros((self._config.wighting_number, )),
-            maximum=np.ones((self._config.wighting_number, )),
+            minimum=np.zeros((self._config.weighting_number, )),
+            maximum=np.ones((self._config.weighting_number, )),
             name='weights'
         )
-    
     
     def _observation(self) -> np.ndarray:
         """Return the observation of the environment."""
@@ -1232,7 +1358,7 @@ class vehicularNetworkEnv(baseEnvironment):
         return edge_action
     
     def generate_weights(self, count=1, m=1) -> None:
-        n = self._config.wighting_number
+        n = self._config.weighting_number
         all_weights = []
         target = np.random.dirichlet(np.ones(n), 1)[0]
         prev_t = target
@@ -1246,8 +1372,10 @@ class vehicularNetworkEnv(baseEnvironment):
                         (m - i - 1) / float(m)
                     all_weights.append(i_w)
             prev_t = target + 0.
-        for i in range(self._config.wighting_number):
-            self._weights[i] = all_weights[i]
+        # print("all_weights: ", all_weights)
+        for i in range(self._config.weighting_number):
+            self._weights[i] = all_weights[0][i]
+        # print("self._weights: ", self._weights)
 
 
 Array = specs.Array

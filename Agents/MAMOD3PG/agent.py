@@ -60,14 +60,14 @@ class D3PGConfig:
     discount: float = 0.99
     batch_size: int = 256
     prefetch_size: int = 4
-    target_update_period: int = 4
+    target_update_period: int = 100
     vehicle_policy_optimizer: Optional[snt.Optimizer] = None
     vehicle_critic_optimizer: Optional[snt.Optimizer] = None
     edge_policy_optimizer: Optional[snt.Optimizer] = None
     edge_critic_optimizer: Optional[snt.Optimizer] = None
     min_replay_size: int = 10000
     max_replay_size: int = 1000000
-    samples_per_insert: Optional[float] = 8.0
+    samples_per_insert: Optional[float] = 32.0
     n_step: int = 1
     sigma: float = 0.3
     clipping: bool = True
@@ -129,7 +129,9 @@ class D3PGNetworks:
 
         # Create variables for the policy and critic nets.
         _ = utils.create_variables(self.vehicle_policy_network, [vehicle_emb_spec])
-        _ = utils.create_variables(self.vehicle_critic_network, [vehicle_emb_spec, critic_vehicle_action_spec])
+        print("vehicle_emb_spec: ", vehicle_emb_spec)
+        print("critic_vehicle_action_spec: ", critic_vehicle_action_spec)
+        # _ = utils.create_variables(self.vehicle_critic_network, [vehicle_emb_spec, critic_vehicle_action_spec])
 
         _ = utils.create_variables(self.edge_policy_network, [edge_emb_spec])
         _ = utils.create_variables(self.edge_critic_network, [edge_emb_spec, critic_edge_action_spec])
@@ -563,7 +565,7 @@ class MAMODistributedDDPG:
             label='Evaluator_Loop',
         )
 
-    def build(self, name='mad3pg'):
+    def build(self, name='mamod3pg'):
         """Build the distributed agent topology."""
         program = lp.Program(name=name)
 

@@ -48,7 +48,7 @@ def make_default_D3PGNetworks(
     
     batch_size: int = 256,
 ):
-    from Agents.MAD3PG.agent import D3PGNetworks
+    from Agents.MAMOD3PG.agent import D3PGNetworks
 
     # Get total number of action dimensions from action spec.
     vehicle_num_dimensions = np.prod(vehicle_action_spec.shape, dtype=int)

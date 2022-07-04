@@ -70,6 +70,7 @@ class vehicularNetworkEnvConfig:
     probabiliity_threshold: float = 0.9
 
     """Age of View related."""
+    weighting_number: int = 3
     weight_of_timeliness: float = 0.3
     weight_of_consistency: float = 0.3
     weight_of_redundancy: float = 0.2
