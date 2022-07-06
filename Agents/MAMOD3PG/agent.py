@@ -1,20 +1,17 @@
 """D3PG agent implementation."""
 import copy
 import dataclasses
-from typing import Callable, Iterator, List, Optional, Tuple, Union, Sequence
+from typing import Callable, Iterator, List, Optional, Union, Sequence
 import acme
 from Agents.MAMOD3PG.environment_loop import EnvironmentLoop
 from acme import adders
 from acme import core
 from acme import datasets
-from acme import types
 from acme.adders import reverb as reverb_adders
 from Agents.MAMOD3PG.adder import NStepTransitionAdder
 from Agents.MAMOD3PG import actors
 from Agents.MAMOD3PG import learning
 from Agents.MAMOD3PG import base_agent
-from acme.tf import networks as network_utils
-from acme.tf import utils
 from acme.tf import variable_utils
 from acme.tf import savers as tf2_savers
 from acme.utils import counting
@@ -26,7 +23,7 @@ import sonnet as snt
 import launchpad as lp
 import functools
 import dm_env
-from Agents.MAMOD3PG.networks import make_default_D3PGNetworks
+from Agents.MAMOD3PG.networks import MAMOD3PGNetworks, make_default_MAMOD3PGNetworks
 
 Replicator = Union[snt.distribute.Replicator, snt.distribute.TpuReplicator]
 
@@ -78,98 +75,6 @@ class D3PGConfig:
     accelerator: Optional[str] = 'GPU'
 
 
-@dataclasses.dataclass
-class D3PGNetworks:
-    """Structure containing the networks for D3PG."""
-
-    vehicle_policy_network: types.TensorTransformation
-    vehicle_critic_network: types.TensorTransformation
-    vehicle_observation_network: types.TensorTransformation
-
-    edge_policy_network: types.TensorTransformation
-    edge_critic_network: types.TensorTransformation
-    edge_observation_network: types.TensorTransformation
-
-    def __init__(
-        self,
-        vehicle_policy_network: types.TensorTransformation,
-        vehicle_critic_network: types.TensorTransformation,
-        vehicle_observation_network: types.TensorTransformation,
-
-        edge_policy_network: types.TensorTransformation,
-        edge_critic_network: types.TensorTransformation,
-        edge_observation_network: types.TensorTransformation,
-    ):
-        # This method is implemented (rather than added by the dataclass decorator)
-        # in order to allow observation network to be passed as an arbitrary tensor
-        # transformation rather than as a snt Module.
-        self.vehicle_policy_network = vehicle_policy_network
-        self.vehicle_critic_network = vehicle_critic_network
-        self.vehicle_observation_network = utils.to_sonnet_module(vehicle_observation_network)
-
-        self.edge_policy_network = edge_policy_network
-        self.edge_critic_network = edge_critic_network
-        self.edge_observation_network = utils.to_sonnet_module(edge_observation_network)
-
-    def init(
-        self, 
-        environment_spec,
-    ):
-        """Initialize the networks given an environment spec."""
-        # Get observation and action specs.
-        vehicle_observation_spec = environment_spec.vehicle_observations
-        critic_vehicle_action_spec = environment_spec.critic_vehicle_actions
-        edge_observation_spec = environment_spec.edge_observations
-        critic_edge_action_spec = environment_spec.critic_edge_actions
-
-        # Create variables for the observation net and, as a side-effect, get a
-        # spec describing the embedding space.
-        vehicle_emb_spec = utils.create_variables(self.vehicle_observation_network, [vehicle_observation_spec])
-        edge_emb_spec = utils.create_variables(self.edge_observation_network, [edge_observation_spec])
-
-        # Create variables for the policy and critic nets.
-        _ = utils.create_variables(self.vehicle_policy_network, [vehicle_emb_spec])
-        print("vehicle_emb_spec: ", vehicle_emb_spec)
-        print("critic_vehicle_action_spec: ", critic_vehicle_action_spec)
-        # _ = utils.create_variables(self.vehicle_critic_network, [vehicle_emb_spec, critic_vehicle_action_spec])
-
-        _ = utils.create_variables(self.edge_policy_network, [edge_emb_spec])
-        _ = utils.create_variables(self.edge_critic_network, [edge_emb_spec, critic_edge_action_spec])
-
-    def make_policy(
-        self,
-        environment_spec,
-        sigma: float = 0.0,
-    ) -> Tuple[snt.Module, snt.Module]:
-        """Create a single network which evaluates the policy."""
-        # Stack the observation and policy networks.
-        vehicle_stack = [
-            self.vehicle_observation_network,
-            self.vehicle_policy_network,
-        ]
-
-        edge_stack = [
-            self.edge_observation_network,
-            self.edge_policy_network,
-        ]
-
-        # If a stochastic/non-greedy policy is requested, add Gaussian noise on
-        # top to enable a simple form of exploration.
-        # TODO: Refactor this to remove it from the class.
-        if sigma > 0.0:
-            vehicle_stack += [
-                network_utils.ClippedGaussian(sigma),
-                network_utils.ClipToSpec(environment_spec.vehicle_actions),   # Clip to action spec.
-            ]
-            edge_stack += [
-                network_utils.ClippedGaussian(sigma),
-                network_utils.ClipToSpec(environment_spec.edge_actions),    # Clip to action spec.
-            ]
-
-        # Return a network which sequentially evaluates everything in the stack.
-        return snt.Sequential(vehicle_stack), snt.Sequential(edge_stack)
-
-
 class MOD3PGAgent(base_agent.Agent):
     """D3PG Agent.
     This implements a single-process D3PG agent. This is an actor-critic algorithm
@@ -183,29 +88,33 @@ class MOD3PGAgent(base_agent.Agent):
         config: D3PGConfig,
         environment,
         environment_spec,
-        networks: Optional[D3PGNetworks] = None,
+        networks: Optional[MAMOD3PGNetworks] = None,
     ):
         """Initialize the agent.
         Args:
             config: Configuration for the agent.
         """
+        
         self._config = config
         self._accelerator = config.accelerator
 
         if not self._accelerator:
             self._accelerator = get_first_available_accelerator_type(['TPU', 'GPU', 'CPU'])
-
+        
         if networks is None:
-            online_networks = make_default_D3PGNetworks(
+            online_networks = make_default_MAMOD3PGNetworks(
                 vehicle_action_spec=environment.vehicle_action_spec,
                 edge_action_spec=environment.edge_action_spec,
+                
+                vehicle_number=environment._config.vehicle_number,
                 vehicle_action_number=environment._vehicle_action_size,
+                vehicle_observation_size=environment._vehicle_observation_size,
+                edge_observation_size=environment._edge_observation_size,
                 edge_action_number=environment._edge_action_size,
-                batch_size=self._config.batch_size,
             )
         else:
             online_networks = networks
-
+        
         self._environment = environment
         self._environment_spec = environment_spec
         # Target networks are just a copy of the online networks.
@@ -349,8 +258,8 @@ class MOD3PGAgent(base_agent.Agent):
 
     def make_learner(
         self,
-        online_networks: D3PGNetworks, 
-        target_networks: D3PGNetworks,
+        online_networks: MAMOD3PGNetworks, 
+        target_networks: MAMOD3PGNetworks,
         dataset: Iterator[reverb.ReplaySample],
         counter: Optional[counting.Counter] = None,
         logger: Optional[loggers.Logger] = None,
@@ -405,7 +314,7 @@ class MAMODistributedDDPG:
         config: D3PGConfig,
         environment_factory: Callable[[bool], dm_env.Environment],
         environment_spec,
-        networks: Optional[D3PGNetworks] = None,
+        networks: Optional[MAMOD3PGNetworks] = None,
         num_actors: int = 1,
         num_caches: int = 0,
         max_actor_steps: Optional[int] = None,
@@ -427,6 +336,7 @@ class MAMODistributedDDPG:
         self._environment_spec = environment_spec
         self._environment_factory = environment_factory
         # Create the agent.
+        
         self._agent = MOD3PGAgent(
             config=self._config,
             environment=self._environment_factory(False),

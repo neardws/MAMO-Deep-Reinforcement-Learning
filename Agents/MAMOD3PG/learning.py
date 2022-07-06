@@ -260,9 +260,11 @@ class D3PGLearner(acme.Learner):
                 o_t = tree.map_structure(tf.stop_gradient, o_t)
 
                 # Critic learning.
-                other_action = tf2_utils.batch_concat(transitions.action[:,  : vehicle_index * self._vehicle_action_size], transitions.action[:, (vehicle_index + 1) * self._vehicle_action_size : ])
+                # concat two tensor together in the batch dimension
+                other_action = tf2_utils.batch_concat([transitions.action[:,  : vehicle_index * self._vehicle_action_size], transitions.action[:, (vehicle_index + 1) * self._vehicle_action_size : self._vehicle_number * self._vehicle_action_size]])
+                
                 q_tm1 = self._vehicle_critic_network(o_tm1, other_action, transitions.action[:, vehicle_index * self._vehicle_action_size : (vehicle_index + 1) * self._vehicle_action_size])
-                other_action = tf2_utils.batch_concat(new_vehicles_a_t[:, : vehicle_index * self._vehicle_action_size], new_vehicles_a_t[:, (vehicle_index + 1) * self._vehicle_action_size : ])
+                other_action = tf2_utils.batch_concat([new_vehicles_a_t[:, : vehicle_index * self._vehicle_action_size], new_vehicles_a_t[:, (vehicle_index + 1) * self._vehicle_action_size : self._vehicle_number * self._vehicle_action_size]])
                 q_t = self._target_vehicle_critic_network(o_t, other_action, new_vehicles_a_t[:, vehicle_index * self._vehicle_action_size : (vehicle_index + 1) * self._vehicle_action_size])
 
                 # Critic loss.

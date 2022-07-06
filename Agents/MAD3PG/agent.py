@@ -1,20 +1,18 @@
 """D3PG agent implementation."""
 import copy
 import dataclasses
-from typing import Callable, Iterator, List, Optional, Tuple, Union, Sequence
+from re import I
+from typing import Callable, Iterator, List, Optional, Union, Sequence
 import acme
 from Agents.MAD3PG.environment_loop import EnvironmentLoop
 from acme import adders
 from acme import core
 from acme import datasets
-from acme import types
 from acme.adders import reverb as reverb_adders
 from Agents.MAD3PG.adder import NStepTransitionAdder
 from Agents.MAD3PG import actors
 from Agents.MAD3PG import learning
 from Agents.MAD3PG import base_agent
-from acme.tf import networks as network_utils
-from acme.tf import utils
 from acme.tf import variable_utils
 from acme.tf import savers as tf2_savers
 from acme.utils import counting
@@ -26,7 +24,7 @@ import sonnet as snt
 import launchpad as lp
 import functools
 import dm_env
-from Agents.MAD3PG.networks import make_default_D3PGNetworks
+from Agents.MAD3PG.networks import make_default_D3PGNetworks, D3PGNetworks
 
 Replicator = Union[snt.distribute.Replicator, snt.distribute.TpuReplicator]
 
@@ -76,96 +74,6 @@ class D3PGConfig:
     logger: Optional[loggers.Logger] = None
     checkpoint: bool = True
     accelerator: Optional[str] = 'GPU'
-
-
-@dataclasses.dataclass
-class D3PGNetworks:
-    """Structure containing the networks for D3PG."""
-
-    vehicle_policy_network: types.TensorTransformation
-    vehicle_critic_network: types.TensorTransformation
-    vehicle_observation_network: types.TensorTransformation
-
-    edge_policy_network: types.TensorTransformation
-    edge_critic_network: types.TensorTransformation
-    edge_observation_network: types.TensorTransformation
-
-    def __init__(
-        self,
-        vehicle_policy_network: types.TensorTransformation,
-        vehicle_critic_network: types.TensorTransformation,
-        vehicle_observation_network: types.TensorTransformation,
-
-        edge_policy_network: types.TensorTransformation,
-        edge_critic_network: types.TensorTransformation,
-        edge_observation_network: types.TensorTransformation,
-    ):
-        # This method is implemented (rather than added by the dataclass decorator)
-        # in order to allow observation network to be passed as an arbitrary tensor
-        # transformation rather than as a snt Module.
-        self.vehicle_policy_network = vehicle_policy_network
-        self.vehicle_critic_network = vehicle_critic_network
-        self.vehicle_observation_network = utils.to_sonnet_module(vehicle_observation_network)
-
-        self.edge_policy_network = edge_policy_network
-        self.edge_critic_network = edge_critic_network
-        self.edge_observation_network = utils.to_sonnet_module(edge_observation_network)
-
-    def init(
-        self, 
-        environment_spec,
-    ):
-        """Initialize the networks given an environment spec."""
-        # Get observation and action specs.
-        vehicle_observation_spec = environment_spec.vehicle_observations
-        critic_vehicle_action_spec = environment_spec.critic_vehicle_actions
-        edge_observation_spec = environment_spec.edge_observations
-        critic_edge_action_spec = environment_spec.critic_edge_actions
-
-        # Create variables for the observation net and, as a side-effect, get a
-        # spec describing the embedding space.
-        vehicle_emb_spec = utils.create_variables(self.vehicle_observation_network, [vehicle_observation_spec])
-        edge_emb_spec = utils.create_variables(self.edge_observation_network, [edge_observation_spec])
-
-        # Create variables for the policy and critic nets.
-        _ = utils.create_variables(self.vehicle_policy_network, [vehicle_emb_spec])
-        _ = utils.create_variables(self.vehicle_critic_network, [vehicle_emb_spec, critic_vehicle_action_spec])
-
-        _ = utils.create_variables(self.edge_policy_network, [edge_emb_spec])
-        _ = utils.create_variables(self.edge_critic_network, [edge_emb_spec, critic_edge_action_spec])
-
-    def make_policy(
-        self,
-        environment_spec,
-        sigma: float = 0.0,
-    ) -> Tuple[snt.Module, snt.Module]:
-        """Create a single network which evaluates the policy."""
-        # Stack the observation and policy networks.
-        vehicle_stack = [
-            self.vehicle_observation_network,
-            self.vehicle_policy_network,
-        ]
-
-        edge_stack = [
-            self.edge_observation_network,
-            self.edge_policy_network,
-        ]
-
-        # If a stochastic/non-greedy policy is requested, add Gaussian noise on
-        # top to enable a simple form of exploration.
-        # TODO: Refactor this to remove it from the class.
-        if sigma > 0.0:
-            vehicle_stack += [
-                network_utils.ClippedGaussian(sigma),
-                network_utils.ClipToSpec(environment_spec.vehicle_actions),   # Clip to action spec.
-            ]
-            edge_stack += [
-                network_utils.ClippedGaussian(sigma),
-                network_utils.ClipToSpec(environment_spec.edge_actions),    # Clip to action spec.
-            ]
-
-        # Return a network which sequentially evaluates everything in the stack.
-        return snt.Sequential(vehicle_stack), snt.Sequential(edge_stack)
 
 
 class D3PGAgent(base_agent.Agent):
