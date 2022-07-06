@@ -53,9 +53,13 @@ class MAMOD3PGNetworks:
         """Initialize the networks given an environment spec."""
         # Get observation and action specs.
         vehicle_observation_spec = environment_spec.vehicle_observations
+        vehicle_action_spec = environment_spec.vehicle_actions
         critic_vehicle_action_spec = environment_spec.critic_vehicle_actions
+        critic_vehicle_other_action_spec = environment_spec.critic_vehicle_other_actions
         edge_observation_spec = environment_spec.edge_observations
-        critic_edge_action_spec = environment_spec.critic_edge_actions
+        edge_action_spec = environment_spec.edge_actions
+        weights_spec = environment_spec.weights
+        # critic_edge_action_spec = environment_spec.critic_edge_actions
 
         # Create variables for the observation net and, as a side-effect, get a
         # spec describing the embedding space.
@@ -64,11 +68,10 @@ class MAMOD3PGNetworks:
 
         # Create variables for the policy and critic nets.
         _ = utils.create_variables(self.vehicle_policy_network, [vehicle_emb_spec])
-        # TODO:TypeError: __call__() missing 1 required positional argument: 'action'
-        _ = utils.create_variables(self.vehicle_critic_network, [vehicle_emb_spec, critic_vehicle_action_spec])
+        _ = utils.create_variables(self.vehicle_critic_network, [vehicle_emb_spec, critic_vehicle_other_action_spec, vehicle_action_spec, weights_spec])
 
         _ = utils.create_variables(self.edge_policy_network, [edge_emb_spec])
-        _ = utils.create_variables(self.edge_critic_network, [edge_emb_spec, critic_edge_action_spec])
+        _ = utils.create_variables(self.edge_critic_network, [edge_emb_spec, critic_vehicle_action_spec, edge_action_spec, weights_spec])
 
     def make_policy(
         self,
@@ -130,20 +133,21 @@ def make_default_MAMOD3PGNetworks(
     vehicle_critic_layer_sizes: Sequence[int] = (512, 512, 256),
     vehicle_vmin: float = -150.,
     vehicle_vmax: float = 150.,
-    vehicle_num_atoms: int = 51,
+    vehicle_num_atoms: int = 3,
             
     edge_action_spec: Optional[None] = None,
     edge_policy_layer_sizes: Sequence[int] = (256, 256, 128),
     edge_critic_layer_sizes: Sequence[int] = (512, 512, 256),
     edge_vmin: float = -150.,
     edge_vmax: float = 150.,
-    edge_num_atoms: int = 51,
+    edge_num_atoms: int = 3,
     
     vehicle_number: Optional[int] = None,
     vehicle_action_number: Optional[int] = None,
     vehicle_observation_size: Optional[int] = None,
     edge_observation_size: Optional[int] = None,
     edge_action_number: Optional[int] = None,
+    weights_number: Optional[int] = None,
 ):
     # Get total number of action dimensions from action spec.
     vehicle_num_dimensions = np.prod(vehicle_action_spec.shape, dtype=int)
@@ -163,11 +167,14 @@ def make_default_MAMOD3PGNetworks(
         # The multiplexer concatenates the observations/actions/weights.
         CriticMultiplexer(),
         DuellingMLP(
-            hidden_sizes=vehicle_critic_layer_sizes, 
-            action_number=vehicle_action_number,
-            random_action_size=10,
+            hidden_sizes=vehicle_critic_layer_sizes,
+            
             observation_size=vehicle_observation_size,
-            other_action_size=vehicle_action_number*(vehicle_number-1),
+            other_action_size=vehicle_action_number * (vehicle_number - 1),
+            action_size=vehicle_action_number,
+            weights_size=weights_number,
+            random_action_size=10,
+            reward_size=3,
         ),
         networks.DiscreteValuedHead(vehicle_vmin, vehicle_vmax, vehicle_num_atoms),
     ])
@@ -191,10 +198,13 @@ def make_default_MAMOD3PGNetworks(
         CriticMultiplexer(),
         DuellingMLP(
             hidden_sizes=edge_critic_layer_sizes,
-            action_number=edge_action_number,
-            random_action_size=10,
+            
             observation_size=edge_observation_size,
-            other_action_size=vehicle_action_number*vehicle_number,
+            other_action_size=vehicle_action_number * vehicle_number,
+            action_size=edge_action_number,
+            weights_size=weights_number,
+            random_action_size=10,
+            reward_size=3,
         ),
         networks.DiscreteValuedHead(edge_vmin, edge_vmax, edge_num_atoms),
     ])

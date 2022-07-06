@@ -1,7 +1,6 @@
 """Adders that use Reverb (github.com/deepmind/reverb) as a backend."""
 
 import abc
-import imp
 import time
 from typing import Callable, Iterable, Mapping, NamedTuple, Optional, Sized, Union, Tuple
 from absl import logging
@@ -160,6 +159,7 @@ class ReverbAdder(base_adder.Adder):
         # passing `partial_step=True`.
         self._writer.append(dict(observation=timestep.observation,
                                 vehicle_observation=timestep.vehicle_observation,
+                                weights=timestep.weights,
                                 start_of_episode=timestep.first()),
                             partial_step=True)
         self._add_first_called = True
@@ -180,7 +180,6 @@ class ReverbAdder(base_adder.Adder):
             # Observation was passed at the previous add call.
             action=action,
             reward=next_timestep.reward,
-            weights=next_timestep.weights,
             discount=next_timestep.discount,
             # Start of episode indicator was passed at the previous add call.
             **({'extras': extras} if has_extras else {})
@@ -192,6 +191,7 @@ class ReverbAdder(base_adder.Adder):
             dict(
                 observation=next_timestep.observation,
                 vehicle_observation=next_timestep.vehicle_observation,
+                weights=next_timestep.weights,
                 start_of_episode=next_timestep.first()),
             partial_step=True)
         self._write()

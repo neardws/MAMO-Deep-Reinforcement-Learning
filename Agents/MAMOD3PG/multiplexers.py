@@ -61,7 +61,8 @@ class CriticMultiplexer(snt.Module):
         self,
         observation: types.NestedTensor,
         other_actions: types.NestedTensor,
-        action: types.NestedTensor
+        action: types.NestedTensor,
+        weights: types.NestedTensor
     ) -> tf.Tensor:
 
         # Maybe transform observations and actions before feeding them on.
@@ -76,7 +77,7 @@ class CriticMultiplexer(snt.Module):
                 action = tf.cast(action, observation.dtype)
 
         # Concat observations and actions, with one batch dimension.
-        outputs = tf2_utils.batch_concat([observation, other_actions, action])
+        outputs = tf2_utils.batch_concat([observation, other_actions, action, weights])
 
         # Maybe transform output before returning.
         if self._critic_network:

@@ -12,7 +12,7 @@ from Environments.utilities import sensingAndQueuing, v2iTransmission
 class vehicularNetworkEnv(baseEnvironment):
     """Vehicular Network Environment built on the dm_env framework."""
     reward_history: List[Dict[str, float]] = None
-    is_reward_matrix: bool = False
+    is_reward_matrix: bool = True
         
     @classmethod
     def init_reward_history(cls, time_slots_number, is_reward_matrix) -> None:
@@ -74,7 +74,7 @@ class vehicularNetworkEnv(baseEnvironment):
     def __init__(
         self, 
         envConfig: env_config.vehicularNetworkEnvConfig = None,
-        is_reward_matrix: bool = False,
+        is_reward_matrix: bool = True,
     ) -> None:
         """Initialize the environment."""
         if envConfig is None:
@@ -281,6 +281,7 @@ class vehicularNetworkEnv(baseEnvironment):
             is_output_two_dimension=True,
         )
         self.generate_weights()
+        print("self.weights:", self._weights)
         return restart(observation=self._observation(), vehicle_observation=vehicle_observation, weights=self._weights)
 
     def step(self, action: np.ndarray):
@@ -374,6 +375,7 @@ class vehicularNetworkEnv(baseEnvironment):
             )
 
             self.generate_weights()
+            # print("self.weights:", self._weights)
             # check for termination
             if self._time_slots.is_end():
                 self._reset_next_step = True
@@ -846,6 +848,16 @@ class vehicularNetworkEnv(baseEnvironment):
             name='critic_vehicle_actions'
         )
     
+    def vehicle_critic_network_other_action_spec(self) -> specs.BoundedArray:
+        return specs.BoundedArray(
+            shape=(self._vehicle_critic_network_action_size - self._vehicle_action_size,),
+            dtype=float,
+            minimum=np.zeros((self._vehicle_critic_network_action_size - self._vehicle_action_size,)),
+            maximum=np.ones((self._vehicle_critic_network_action_size - self._vehicle_action_size,)),
+            name='critic_vehicle_other_actions'
+        )
+    
+    
     """Define the observation spaces of edge."""
     def edge_observation_spec(self) -> specs.BoundedArray:
         """Define and return the observation space."""
@@ -878,6 +890,7 @@ class vehicularNetworkEnv(baseEnvironment):
             maximum=np.ones((self._edge_critic_network_action_size,)),
             name='critic_edge_actions',
         )
+    
 
     """Define the gloabl observation spaces."""
     def observation_spec(self) -> specs.BoundedArray:
@@ -1395,6 +1408,7 @@ class EnvironmentSpec(NamedTuple):
     rewards: NestedSpec
     weights: NestedSpec
     critic_vehicle_actions: NestedSpec
+    critic_vehicle_other_actions: NestedSpec
     critic_edge_actions: NestedSpec
     discounts: NestedSpec
 
@@ -1412,5 +1426,7 @@ def make_environment_spec(environment: vehicularNetworkEnv) -> EnvironmentSpec:
         rewards=environment.reward_spec(),
         weights=environment.weights_spec(),
         critic_vehicle_actions=environment.vehicle_critic_network_action_spec(),
+        critic_vehicle_other_actions=environment.vehicle_critic_network_other_action_spec(),
         critic_edge_actions=environment.edge_critic_network_action_spec(),
         discounts=environment.discount_spec())
+    

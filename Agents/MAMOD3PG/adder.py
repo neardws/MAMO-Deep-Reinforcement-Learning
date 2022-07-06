@@ -137,10 +137,13 @@ class NStepTransitionAdder(reverb_adder.ReverbAdder):
         # Get the state, action, next_state, as well as possibly extras for the
         # transition that is about to be written.
         history = self._writer.history
-        s, v_s, a = tree.map_structure(get_first,
-                                (history['observation'], history['vehicle_observation'], history['action']))
-        s_, v_s_ = tree.map_structure(get_last, (history['observation'], history['vehicle_observation']))
+        
+        
+        s, v_s, weights, a = tree.map_structure(get_first,
+                                (history['observation'], history['vehicle_observation'], history['weights'], history['action']))
+        s_, v_s_, weights_ = tree.map_structure(get_last, (history['observation'], history['vehicle_observation'], history['weights']))
 
+        
         # Maybe get extras to add to the transition later.
         if 'extras' in history:
             extras = tree.map_structure((get_first, get_last), history['extras'])
@@ -150,8 +153,8 @@ class NStepTransitionAdder(reverb_adder.ReverbAdder):
         # called from write_last) we will write the final transitions of size (N,
         # N-1, ...). See the Note in the docstring.
         # Get numpy view of the steps to be fed into the priority functions.
-        reward, weights, discount = tree.map_structure(
-            get_all_np, (history['reward'], history['weights'], history['discount']))
+        reward, discount = tree.map_structure(
+            get_all_np, (history['reward'], history['discount']))
 
         # Compute discounted return and geometric discount over n steps.
         n_step_return, total_discount = self._compute_cumulative_quantities(
@@ -181,6 +184,7 @@ class NStepTransitionAdder(reverb_adder.ReverbAdder):
             discount=total_discount,
             next_observation=s_,
             vehicle_next_observation=v_s_,
+            next_weights=weights_,
             extras=())
 
         # Calculate the priority for this transition.
@@ -277,6 +281,7 @@ class NStepTransitionAdder(reverb_adder.ReverbAdder):
             step_discounts_spec,
             environment_spec.observations,  # next_observation
             environment_spec.vehicle_all_observations,  # vehicle_next_observations
+            environment_spec.weights, # next_weights
             extras_spec)
 
         return tree.map_structure_with_path(reverb_adder.spec_like_to_tensor_spec,

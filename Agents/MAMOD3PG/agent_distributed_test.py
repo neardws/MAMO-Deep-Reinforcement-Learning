@@ -42,11 +42,13 @@ class DistributedAgentTest(absltest.TestCase):
             vehicle_observation_size=env._vehicle_observation_size,
             edge_observation_size=env._edge_observation_size,
             edge_action_number=env._edge_action_size,
+            
+            weights_number=env._config.weighting_number,
         )
 
         agent = MAMODistributedDDPG(
             config=agent_config,
-            environment_factory=lambda x: vehicularNetworkEnv(env_config),
+            environment_factory=lambda x: vehicularNetworkEnv(env_config, is_reward_matrix=True),
             environment_spec=spec,
             networks=networks,
             num_actors=2,
