@@ -281,7 +281,7 @@ class vehicularNetworkEnv(baseEnvironment):
             is_output_two_dimension=True,
         )
         self.generate_weights()
-        print("self.weights:", self._weights)
+        # print("self.weights:", self._weights)
         return restart(observation=self._observation(), vehicle_observation=vehicle_observation, weights=self._weights)
 
     def step(self, action: np.ndarray):

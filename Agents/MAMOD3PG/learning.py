@@ -5,7 +5,6 @@ from acme.tf import networks
 from typing import Dict, Iterator, List, Optional, Union, Sequence
 import acme
 from acme.tf import losses
-from acme.tf import networks as acme_nets
 from acme.tf import savers as tf2_savers
 from acme.tf import utils as tf2_utils
 from acme.utils import counting
@@ -210,7 +209,7 @@ class D3PGLearner(acme.Learner):
         self._vehicle_observation_size = vehicle_observation_size
         self._vehicle_action_size = vehicle_action_size
 
-    @tf.function
+    # @tf.function
     def _step(self, sample) -> Dict[str, tf.Tensor]:
         transitions: types.Transition = sample.data  # Assuming ReverbSample.
 
@@ -270,6 +269,7 @@ class D3PGLearner(acme.Learner):
                 # Critic loss.
                 vehicle_critic_loss = categorical(q_tm1, transitions.reward[:, vehicle_index, :], transitions.weights,
                                                 discount * transitions.discount, q_t)
+                # print("vehicle_critic_loss: ", vehicle_critic_loss)
                 vehicle_critic_losses.append(vehicle_critic_loss)
 
                 # Actor learning
@@ -286,10 +286,11 @@ class D3PGLearner(acme.Learner):
                 dqda_clipping = 1.0 if self._clipping else None
                 vehicle_policy_loss = losses.dpg(
                     dpg_q_t,
-                    vehicles_a_t,
+                    dpg_a_t,
                     tape=tape,
                     dqda_clipping=dqda_clipping,
                     clip_norm=self._clipping)
+                # print("vehicle_policy_loss: ", vehicle_policy_loss)
                 vehicle_policy_losses.append(vehicle_policy_loss)
 
             """Compute the mean loss for the policy and critic of vehicles."""
@@ -316,13 +317,16 @@ class D3PGLearner(acme.Learner):
             # Critic loss.
             edge_critic_loss = categorical(q_tm1, transitions.reward[:, -1, :], transitions.weights,
                                             discount * transitions.discount, q_t)
+            # print("edge_critic_loss:", edge_critic_loss)
             edge_critic_losses.append(edge_critic_loss)
             # Actor learning.
             dpg_a_t = self._edge_policy_network(o_t)
             dpg_z_t = self._edge_critic_network(o_t, new_vehicles_a_t, dpg_a_t, transitions.next_weights)
-            dpg_a_t = tf.concat([new_vehicles_a_t, dpg_a_t], axis=1)
+            # dpg_a_t = tf.concat([new_vehicles_a_t, dpg_a_t], axis=1)
             dpg_q_t = dpg_z_t.mean()
 
+            # print("dpg_q_t: ", dpg_q_t)
+            # print("dpg_a_t: ", dpg_a_t)
             # Actor loss. If clipping is true use dqda clipping and clip the norm.
             dqda_clipping = 1.0 if self._clipping else None
             edge_policy_loss = losses.dpg(
@@ -331,6 +335,7 @@ class D3PGLearner(acme.Learner):
                 tape=tape,
                 dqda_clipping=dqda_clipping,
                 clip_norm=self._clipping)
+            # print("edge_policy_loss: ", edge_policy_loss)
             edge_policy_losses.append(edge_policy_loss)
 
             edge_critic_loss = tf.reduce_mean(tf.stack(edge_critic_losses, axis=0))
@@ -390,7 +395,7 @@ class D3PGLearner(acme.Learner):
             'edge_critic_loss': edge_critic_loss,
         }
 
-    @tf.function
+    # @tf.function
     def _replicated_step(self):
         # Update target network
         online_variables = (

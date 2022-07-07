@@ -10,6 +10,7 @@ tf.config.experimental.set_virtual_device_configuration(gpus[1],
     [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=memory_limit)])
 
 from Experiment import run_mad3pg
+from Experiment import run_mamod3pg
 
 if __name__ == '__main__':
-    app.run(run_mad3pg.main)
+    app.run(run_mamod3pg.main)

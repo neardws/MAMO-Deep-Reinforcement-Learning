@@ -1,7 +1,7 @@
 import launchpad as lp
 from Environments.environment import vehicularNetworkEnv, make_environment_spec
-from Agents.MAMOD3PG.networks import make_default_D3PGNetworks
-from Agents.MAMOD3PG.agent import D3PGConfig, MOD3PGAgent
+from Agents.MAMOD3PG.networks import make_default_MAMOD3PGNetworks
+from Agents.MAMOD3PG.agent import D3PGConfig, MAMODistributedDDPG
 from Environments.environmentConfig import vehicularNetworkEnvConfig
 
 
@@ -16,18 +16,26 @@ def main(_):
     spec = make_environment_spec(environment)
 
     # Create the networks.
-    networks = make_default_D3PGNetworks(
+    networks = make_default_MAMOD3PGNetworks(
         vehicle_action_spec=spec.vehicle_actions,
         edge_action_spec=spec.edge_actions,
+
+        vehicle_number=environment._config.vehicle_number,
+        vehicle_action_number=environment._vehicle_action_size,
+        vehicle_observation_size=environment._vehicle_observation_size,
+        edge_observation_size=environment._edge_observation_size,
+        edge_action_number=environment._edge_action_size,
+        
+        weights_number=environment._config.weighting_number,
     )
 
     agent_config = D3PGConfig()
 
-    agent = MOD3PGAgent(
+    agent = MAMODistributedDDPG(
         config=agent_config,
         environment_factory=lambda x: vehicularNetworkEnv(environment_config),
         environment_spec=spec,
-        max_actor_steps=5000,
+        max_actor_steps=300 * 5000,
         networks=networks,
         num_actors=10,
     )

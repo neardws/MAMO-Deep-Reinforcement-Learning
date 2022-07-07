@@ -64,7 +64,7 @@ class D3PGConfig:
     edge_critic_optimizer: Optional[snt.Optimizer] = None
     min_replay_size: int = 10000
     max_replay_size: int = 1000000
-    samples_per_insert: Optional[float] = 32.0
+    samples_per_insert: Optional[float] = 1.0
     n_step: int = 1
     sigma: float = 0.3
     clipping: bool = True
