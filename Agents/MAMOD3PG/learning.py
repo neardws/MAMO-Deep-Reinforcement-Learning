@@ -209,7 +209,7 @@ class D3PGLearner(acme.Learner):
         self._vehicle_observation_size = vehicle_observation_size
         self._vehicle_action_size = vehicle_action_size
 
-    # @tf.function
+    @tf.function
     def _step(self, sample) -> Dict[str, tf.Tensor]:
         transitions: types.Transition = sample.data  # Assuming ReverbSample.
 
@@ -261,8 +261,8 @@ class D3PGLearner(acme.Learner):
                 # Critic learning.
                 # concat two tensor together in the batch dimension
                 other_action = tf2_utils.batch_concat([transitions.action[:,  : vehicle_index * self._vehicle_action_size], transitions.action[:, (vehicle_index + 1) * self._vehicle_action_size : self._vehicle_number * self._vehicle_action_size]])
-                
                 q_tm1 = self._vehicle_critic_network(o_tm1, other_action, transitions.action[:, vehicle_index * self._vehicle_action_size : (vehicle_index + 1) * self._vehicle_action_size], transitions.weights)
+                
                 other_action = tf2_utils.batch_concat([new_vehicles_a_t[:, : vehicle_index * self._vehicle_action_size], new_vehicles_a_t[:, (vehicle_index + 1) * self._vehicle_action_size : self._vehicle_number * self._vehicle_action_size]])
                 q_t = self._target_vehicle_critic_network(o_t, other_action, new_vehicles_a_t[:, vehicle_index * self._vehicle_action_size : (vehicle_index + 1) * self._vehicle_action_size], transitions.next_weights)
 
@@ -395,7 +395,7 @@ class D3PGLearner(acme.Learner):
             'edge_critic_loss': edge_critic_loss,
         }
 
-    # @tf.function
+    @tf.function
     def _replicated_step(self):
         # Update target network
         online_variables = (

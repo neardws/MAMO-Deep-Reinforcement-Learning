@@ -72,10 +72,17 @@ class vehicularNetworkEnvConfig:
     """Age of View related."""
     
     static_weight_of_timeliness: float = 0.3
-    static_weight_of_consistency: float = 0.3
-    static_weight_of_redundancy: float = 0.2
-    static_weight_of_cost: float = 0.2
+    static_weight_of_consistency: float = 0.2
+    static_weight_of_redundancy: float = 0.1
+    static_weight_of_sensing_cost: float = 0.2
+    static_weight_of_tranmission_cost: float = 0.2
     
-    weighting_number: int = 3
+    weighting_number: int = 2
     weight_of_timeliness: float = 0.6
     weight_of_consistency: float = 0.4
+    
+    weight_of_redundancy: float = 0.2
+    weight_of_sensing_cost: float = 0.4
+    weight_of_tranmission_cost: float = 0.4
+    
+    random_action_size: int = 32

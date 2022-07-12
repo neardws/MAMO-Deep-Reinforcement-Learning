@@ -1,7 +1,7 @@
 import sys
 sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
 
-import Agents.MAMOD3PG.environment_loop as environment_loop
+import Environments.environment_loop as environment_loop
 from absl.testing import absltest
 from Agents.MAMOD3PG import actors
 from Environments.environmentConfig import vehicularNetworkEnvConfig

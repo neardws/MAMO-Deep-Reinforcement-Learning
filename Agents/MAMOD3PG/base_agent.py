@@ -2,7 +2,7 @@
 
 from typing import List
 
-from Agents.MAMOD3PG import base
+from Environments import base
 from acme import types
 
 import dm_env

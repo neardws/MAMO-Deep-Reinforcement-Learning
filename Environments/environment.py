@@ -11,65 +11,52 @@ from Environments.utilities import sensingAndQueuing, v2iTransmission
 
 class vehicularNetworkEnv(baseEnvironment):
     """Vehicular Network Environment built on the dm_env framework."""
-    reward_history: List[Dict[str, float]] = None
-    is_reward_matrix: bool = True
-        
-    @classmethod
-    def init_reward_history(cls, time_slots_number, is_reward_matrix) -> None:
-        cls.is_reward_matrix = is_reward_matrix
+    
+    def init_reward_history(self, time_slots_number, is_reward_matrix) -> None:
+        self.is_reward_matrix = is_reward_matrix
         """Set the reward history."""
-        if cls.is_reward_matrix:
-            cls.reward_history = [{
+        if self.is_reward_matrix:
+            self.reward_history = [{
                 "aov_max": -100, 
                 "aov_min": 100,
-                "redundancy_max": -100,
-                "redundancy_min": 100,
                 "cost_max": -100,
                 "cost_min": 100,
             } for _ in range(time_slots_number)]
         else:
-            cls.reward_history = [{"max": -100, "min": 100} for _ in range(time_slots_number)]
+            self.reward_history = [{"max": -100, "min": 100} for _ in range(time_slots_number)]
             
-    @classmethod
     def append_reward_at_now(
-        cls, now: int, 
+        self, now: int, 
         reward: Optional[float]=None, 
         aov: Optional[float]=None, 
-        redundancy: Optional[float]=None, 
         cost: Optional[float]=None
     ) -> None:
-        if cls.is_reward_matrix:
-            if aov > cls.reward_history[now]["aov_max"]:
-                cls.reward_history[now]["aov_max"] = aov
-            if aov < cls.reward_history[now]["aov_min"]:
-                cls.reward_history[now]["aov_min"] = aov
-            if redundancy > cls.reward_history[now]["redundancy_max"]:
-                cls.reward_history[now]["redundancy_max"] = redundancy
-            if redundancy < cls.reward_history[now]["redundancy_min"]:
-                cls.reward_history[now]["redundancy_min"] = redundancy
-            if cost > cls.reward_history[now]["cost_max"]:
-                cls.reward_history[now]["cost_max"] = cost
-            if cost < cls.reward_history[now]["cost_min"]:
-                cls.reward_history[now]["cost_min"] = cost
+        if self.is_reward_matrix:
+            if aov > self.reward_history[now]["aov_max"]:
+                self.reward_history[now]["aov_max"] = aov
+            if aov < self.reward_history[now]["aov_min"]:
+                self.reward_history[now]["aov_min"] = aov
+            if cost > self.reward_history[now]["cost_max"]:
+                self.reward_history[now]["cost_max"] = cost
+            if cost < self.reward_history[now]["cost_min"]:
+                self.reward_history[now]["cost_min"] = cost
         else:
-            if reward > cls.reward_history[now]["max"]:
-                cls.reward_history[now]["max"] = reward
-            if reward < cls.reward_history[now]["min"]:
-                cls.reward_history[now]["min"] = reward
+            if reward > self.reward_history[now]["max"]:
+                self.reward_history[now]["max"] = reward
+            if reward < self.reward_history[now]["min"]:
+                self.reward_history[now]["min"] = reward
 
-    @classmethod
-    def get_min_reward_at_now(cls, now: int):
-        if cls.is_reward_matrix:
-            return cls.reward_history[now]["aov_min"], cls.reward_history[now]["redundancy_min"], cls.reward_history[now]["cost_min"]
+    def get_min_reward_at_now(self, now: int):
+        if self.is_reward_matrix:
+            return self.reward_history[now]["aov_min"], self.reward_history[now]["cost_min"]
         else:
-            return cls.reward_history[now]["min"]
+            return self.reward_history[now]["min"]
 
-    @classmethod
-    def get_max_reward_at_now(cls, now: int):
-        if cls.is_reward_matrix:
-            return cls.reward_history[now]["aov_max"], cls.reward_history[now]["redundancy_max"], cls.reward_history[now]["cost_max"]
+    def get_max_reward_at_now(self, now: int):
+        if self.is_reward_matrix:
+            return self.reward_history[now]["aov_max"], self.reward_history[now]["cost_max"]
         else:
-            return cls.reward_history[now]["max"]
+            return self.reward_history[now]["max"]
         
     def __init__(
         self, 
@@ -77,13 +64,15 @@ class vehicularNetworkEnv(baseEnvironment):
         is_reward_matrix: bool = True,
     ) -> None:
         """Initialize the environment."""
+        self.reward_history: List[Dict[str, float]] = None
+        self.is_reward_matrix: bool = is_reward_matrix
+        
         if envConfig is None:
             self._config = env_config.vehicularNetworkEnvConfig()
         else:
             self._config = envConfig
 
-        if vehicularNetworkEnv.reward_history is None:
-            vehicularNetworkEnv.init_reward_history(self._config.time_slot_number, is_reward_matrix)
+        self.init_reward_history(self._config.time_slot_number, is_reward_matrix)
 
         self._time_slots: timeSlots = timeSlots(
             start=self._config.time_slot_start,
@@ -175,10 +164,12 @@ class vehicularNetworkEnv(baseEnvironment):
         self._min_consistency: float = 100000000
         self._max_redundancy: float = -1
         self._min_redundancy: float = 100000000
-        self._max_cost: float = -1
-        self._min_cost: float = 100000000
+        self._max_sensing_cost: float = -1
+        self._min_sensing_cost: float = 100000000
+        self._max_transmission_cost: float = -1
+        self._min_transmission_cost: float = 100000000
         
-        if vehicularNetworkEnv.is_reward_matrix:
+        if self.is_reward_matrix:
             self._reward: np.ndarray = np.zeros(shape=(self._reward_size, self._config.weighting_number))
         else:
             self._reward: np.ndarray = np.zeros(shape=(self._reward_size,))
@@ -272,7 +263,7 @@ class vehicularNetworkEnv(baseEnvironment):
         self._successful_tansmission_probability.clear()
         self._reset_next_step = False
         observation = self._observation()
-        vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
+        vehicle_observation = self.get_vehicle_observations(
             vehicle_number=self._config.vehicle_number,
             information_number=self._config.information_number,
             sensed_information_number=self._config.sensed_information_number,
@@ -303,17 +294,21 @@ class vehicularNetworkEnv(baseEnvironment):
             vehicle_actions=vehicle_actions,
             edge_action=edge_action,
         )
-        if vehicularNetworkEnv.is_reward_matrix:
-            baseline_aov, baseline_redundancy, baseline_cost = self.compute_reward(
+        
+        if self.is_reward_matrix:
+            baseline_aov, baseline_cost, cumulative_aov, cumulative_cost, \
+                average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, \
+                average_sensing_cost, average_transmission_cost = self.compute_reward(
                     information_objects_ordered_by_views=information_objects[0],
                     vehicle_actions=vehicle_actions,
                 )
             self._reward[-1][0] = baseline_aov
-            self._reward[-1][1] = baseline_redundancy
-            self._reward[-1][2] = baseline_cost
+            self._reward[-1][1] = baseline_cost
             
             for i in range(self._config.vehicle_number):
-                vehicle_baseline_aov, vehicle_baseline_redundancy, vehicle_baseline_cost = self.compute_reward(
+                vehicle_baseline_aov, vehicle_baseline_cost, _, _, \
+                    _, _, _, _, _, \
+                    _, _ = self.compute_reward(
                     information_objects_ordered_by_views=information_objects[i + 1],
                     vehicle_actions=vehicle_actions,
                     vehicle_index=i,
@@ -321,14 +316,11 @@ class vehicularNetworkEnv(baseEnvironment):
                 self._reward[i][0] = -1 if baseline_aov - vehicle_baseline_aov < -1 else baseline_aov - vehicle_baseline_aov
                 self._reward[i][0] = 1 if baseline_aov - vehicle_baseline_aov > 1 else baseline_aov - vehicle_baseline_aov
                 
-                self._reward[i][1] = -1 if baseline_redundancy - vehicle_baseline_redundancy < -1 else baseline_redundancy - vehicle_baseline_redundancy
-                self._reward[i][1] = 1 if baseline_redundancy - vehicle_baseline_redundancy > 1 else baseline_redundancy - vehicle_baseline_redundancy
-                
-                self._reward[i][2] = -1 if baseline_cost - vehicle_baseline_cost < -1 else baseline_cost - vehicle_baseline_cost
-                self._reward[i][2] = 1 if baseline_cost - vehicle_baseline_cost > 1 else baseline_cost - vehicle_baseline_cost
+                self._reward[i][1] = -1 if baseline_cost - vehicle_baseline_cost < -1 else baseline_cost - vehicle_baseline_cost
+                self._reward[i][1] = 1 if baseline_cost - vehicle_baseline_cost > 1 else baseline_cost - vehicle_baseline_cost
             
-            aov_min, redundancy_min, cost_min = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
-            aov_max, redundancy_max, cost_max = vehicularNetworkEnv.get_max_reward_at_now(int(self._time_slots.now()))
+            aov_min, cost_min = self.get_min_reward_at_now(int(self._time_slots.now()))
+            aov_max, cost_max = self.get_max_reward_at_now(int(self._time_slots.now()))
             if aov_min != 100 and aov_max != -100:
                 if (aov_max - aov_min) == 0:
                     edge_aov = baseline_aov - aov_min
@@ -336,13 +328,6 @@ class vehicularNetworkEnv(baseEnvironment):
                     edge_aov = baseline_aov -  0.5 * (aov_max + aov_min)
             else:
                 edge_aov = baseline_aov
-            if redundancy_min != 100 and redundancy_max != -100:
-                if (redundancy_max - redundancy_min) == 0:
-                    edge_redundancy = baseline_redundancy - redundancy_min
-                else:
-                    edge_redundancy = baseline_redundancy - 0.5 * (redundancy_max + redundancy_min)
-            else:
-                edge_redundancy = baseline_redundancy
             if cost_min != 100 and cost_max != -100:
                 if (cost_max - cost_min) == 0:
                     edge_cost = baseline_cost - cost_min
@@ -353,10 +338,8 @@ class vehicularNetworkEnv(baseEnvironment):
             
             self._reward[-2][0] = -1 if edge_aov < -1 else edge_aov
             self._reward[-2][0] = 1 if edge_aov > 1 else edge_aov
-            self._reward[-2][1] = -1 if edge_redundancy < -1 else edge_redundancy
-            self._reward[-2][1] = 1 if edge_redundancy > 1 else edge_redundancy
-            self._reward[-2][2] = -1 if edge_cost < -1 else edge_cost
-            self._reward[-2][2] = 1 if edge_cost > 1 else edge_cost
+            self._reward[-2][1] = -1 if edge_cost < -1 else edge_cost
+            self._reward[-2][1] = 1 if edge_cost > 1 else edge_cost
 
             """Update the information in the edge node."""
             self.update_information_in_edge(
@@ -365,7 +348,7 @@ class vehicularNetworkEnv(baseEnvironment):
             # myapp.debug(f"\ninformation_objects_ordered_by_views:\n{self.string_of_information_objects_ordered_by_views(information_objects_ordered_by_views)}")
             observation = self._observation()
 
-            vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
+            vehicle_observation = self.get_vehicle_observations(
                 vehicle_number=self._config.vehicle_number,
                 information_number=self._config.information_number,
                 sensed_information_number=self._config.sensed_information_number,
@@ -379,21 +362,28 @@ class vehicularNetworkEnv(baseEnvironment):
             # check for termination
             if self._time_slots.is_end():
                 self._reset_next_step = True
-                return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation, weights=self._weights)
+                return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation, weights=self._weights), cumulative_aov, cumulative_cost, \
+                    average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, \
+                    average_sensing_cost, average_transmission_cost
             self._time_slots.add_time()
             
-            return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation, weights=self._weights)
+            return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation, weights=self._weights), cumulative_aov, cumulative_cost, \
+                average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, \
+                average_sensing_cost, average_transmission_cost
     
         else:       
-            baseline_reward = self.compute_reward(
+            baseline_reward, cumulative_aov, cumulative_cost, \
+                average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, \
+                average_sensing_cost, average_transmission_cost = self.compute_reward(
                     information_objects_ordered_by_views=information_objects[0],
                     vehicle_actions=vehicle_actions,
                 )
             self._reward[-1] = baseline_reward
             
-            
             for i in range(self._config.vehicle_number):
-                vehicle_baseline_reward = self.compute_reward(
+                vehicle_baseline_reward, _, _, \
+                    _, _, _, _, _, \
+                    _, _ = self.compute_reward(
                     information_objects_ordered_by_views=information_objects[i + 1],
                     vehicle_actions=vehicle_actions,
                     vehicle_index=i,
@@ -401,8 +391,8 @@ class vehicularNetworkEnv(baseEnvironment):
                 vehicle_reward = baseline_reward - vehicle_baseline_reward
                 self._reward[i] = vehicle_reward
             
-            min_reward_history_at_now = vehicularNetworkEnv.get_min_reward_at_now(int(self._time_slots.now()))
-            max_reward_history_at_now = vehicularNetworkEnv.get_max_reward_at_now(int(self._time_slots.now()))
+            min_reward_history_at_now = self.get_min_reward_at_now(int(self._time_slots.now()))
+            max_reward_history_at_now = self.get_max_reward_at_now(int(self._time_slots.now()))
             if min_reward_history_at_now != 100 and max_reward_history_at_now != -100:
                 if (max_reward_history_at_now - min_reward_history_at_now) == 0:
                     edge_reward = baseline_reward - min_reward_history_at_now
@@ -419,7 +409,7 @@ class vehicularNetworkEnv(baseEnvironment):
             # myapp.debug(f"\ninformation_objects_ordered_by_views:\n{self.string_of_information_objects_ordered_by_views(information_objects_ordered_by_views)}")
             observation = self._observation()
 
-            vehicle_observation = vehicularNetworkEnv.get_vehicle_observations(
+            vehicle_observation = self.get_vehicle_observations(
                 vehicle_number=self._config.vehicle_number,
                 information_number=self._config.information_number,
                 sensed_information_number=self._config.sensed_information_number,
@@ -431,9 +421,13 @@ class vehicularNetworkEnv(baseEnvironment):
             # check for termination
             if self._time_slots.is_end():
                 self._reset_next_step = True
-                return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
+                return termination(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation), cumulative_aov, cumulative_cost, \
+                    average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, \
+                    average_sensing_cost, average_transmission_cost
             self._time_slots.add_time()
-            return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation)
+            return transition(observation=observation, reward=self._reward, vehicle_observation=vehicle_observation), cumulative_aov, cumulative_cost, \
+                average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, \
+                average_sensing_cost, average_transmission_cost
 
     def transform_action_array_to_actions(self, action: np.ndarray) -> Tuple[int, List[List[int]], List[vehicleAction], edgeAction]:
         """Transform the action array to the actions of vehicles and the edge node.
@@ -595,6 +589,15 @@ class vehicularNetworkEnv(baseEnvironment):
             return:
                 the reward of the different dim.
         """
+        cumulative_aov = 0
+        cumulative_cost = 0
+        average_aov = 0
+        average_cost = 0
+        average_timeliness = 0
+        average_consistency = 0
+        average_redundancy = 0
+        average_sensing_cost = 0
+        average_transmission_cost = 0
 
         """Compute the timeliness of views"""
         timeliness_views = []
@@ -603,8 +606,15 @@ class vehicularNetworkEnv(baseEnvironment):
             for _ in range(self._config.vehicle_number):
                 timeliness_list.append(list())
             for infor in information_objects:
+                # if infor.get_arrival_moment() + infor.get_queuing_time() + infor.get_transmission_time() - infor.get_updating_moment() > 1000:
+                #     print("infor.get_arrival_moment(): ", infor.get_arrival_moment())
+                #     print("infor.get_queuing_time(): ", infor.get_queuing_time())
+                #     print("infor.get_transmission_time(): ", infor.get_transmission_time())
+                #     print("infor.get_updating_moment(): ", infor.get_updating_moment())
+                #     print("*****************************************************************************************")
                 timeliness_list[infor.get_vehicle_index()].append(
                     infor.get_arrival_moment() + infor.get_queuing_time() + infor.get_transmission_time() - infor.get_updating_moment()
+                
                 )
             timeliness_of_vehicles = []
             for values in timeliness_list:
@@ -612,7 +622,7 @@ class vehicularNetworkEnv(baseEnvironment):
                     timeliness_of_vehicles.append(0)
                 else:
                     timeliness_of_vehicles.append(max(values))
-            timeliness = sum(timeliness_of_vehicles)
+            timeliness = max(timeliness_of_vehicles)
             if not np.isinf(timeliness) and not np.isnan(timeliness):
                 timeliness_views.append(timeliness)
                 if timeliness > self._max_timeliness:
@@ -627,12 +637,17 @@ class vehicularNetworkEnv(baseEnvironment):
             for infor in information_objects:
                 updating_moments_of_informations.append(infor.get_updating_moment())
             consistency = max(updating_moments_of_informations) - min(updating_moments_of_informations)
+            # if consistency > 100:
+            #     print("max(updating_moments_of_informations): ", max(updating_moments_of_informations))
+            #     print("min(updating_moments_of_informations): ", min(updating_moments_of_informations))
+            #     print("*****************************************************************************************")
             if not np.isinf(consistency) and not np.isnan(consistency):
                 consistency_views.append(consistency)
                 if consistency > self._max_consistency:
                     self._max_consistency = consistency
                 if consistency < self._min_consistency:
                     self._min_consistency = consistency
+
 
         """Compute the redundancy of views"""
         redundancy_views = []
@@ -654,37 +669,66 @@ class vehicularNetworkEnv(baseEnvironment):
                     self._min_redundancy = redundancy
         
         """Compute the cost of view"""
-        cost_views = []
+        sensing_cost_views = []
+        transmission_cost_views = []
         for information_objects in information_objects_ordered_by_views:
-            cost_list = []
+            sensing_cost_list = []
+            transmission_cost_list = []
             for _ in range(self._config.vehicle_number):
-                cost_list.append(list())
+                sensing_cost_list.append(list())
+                transmission_cost_list.append(list())
             for infor in information_objects:
                 if infor.get_vehicle_index() != -1:
-                    cost_list[infor.get_vehicle_index()].append(
-                        self._vehicle_list.get_vehicle(infor.get_vehicle_index()).get_sensing_cost_by_type(infor.get_type()) + \
-                            infor.get_transmission_time() * vehicle_actions[infor.get_vehicle_index()].get_transmission_power()
+                    sensing_cost_list[infor.get_vehicle_index()].append(
+                        self._vehicle_list.get_vehicle(infor.get_vehicle_index()).get_sensing_cost_by_type(infor.get_type()) 
                     )
-            cost_of_vehicles = []
-            for values in cost_list:
+                    # if infor.get_transmission_time() * vehicle_actions[infor.get_vehicle_index()].get_transmission_power() > 100:
+                    #     print("infor.get_transmission_time() * vehicle_actions[infor.get_vehicle_index()].get_transmission_power(): ", infor.get_transmission_time() * vehicle_actions[infor.get_vehicle_index()].get_transmission_power())
+                    #     print("infor.get_transmission_time(): ", infor.get_transmission_time())
+                    #     print("vehicle_actions[infor.get_vehicle_index()].get_transmission_power(): ", vehicle_actions[infor.get_vehicle_index()].get_transmission_power())
+                    #     print("*****************************************************************************************")
+                    transmission_cost_list[infor.get_vehicle_index()].append(
+                        infor.get_transmission_time() * vehicle_actions[infor.get_vehicle_index()].get_transmission_power()
+                    )
+            sensing_cost_of_vehicles = []
+            transmission_cost_of_vehicles = []
+            for values in sensing_cost_list:
                 if values == []:
-                    cost_of_vehicles.append(0)
+                    sensing_cost_of_vehicles.append(0)
                 else:
-                    cost_of_vehicles.append(sum(values))
-            cost = sum(cost_of_vehicles)
-            if not np.isinf(cost) and not np.isnan(cost):
-                cost_views.append(cost)
-                if cost > self._max_cost:
-                    self._max_cost = cost
-                if cost < self._min_cost:
-                    self._min_cost = cost
+                    sensing_cost_of_vehicles.append(sum(values) / len(values))
+            for values in transmission_cost_list:
+                if values == []:
+                    transmission_cost_of_vehicles.append(0)
+                else:
+                    # print("sum(values) / len(values): ", sum(values) / len(values))
+                    if sum(values) / len(values) > 50:
+                        transmission_cost_of_vehicles.append(50)
+                    else:
+                        transmission_cost_of_vehicles.append(sum(values) / len(values))
+            
+            sensing_cost = sum(sensing_cost_of_vehicles) / len(sensing_cost_of_vehicles)
+            if not np.isinf(sensing_cost) and not np.isnan(sensing_cost):
+                sensing_cost_views.append(sensing_cost)
+                if sensing_cost > self._max_sensing_cost:
+                    self._max_sensing_cost = sensing_cost
+                if sensing_cost < self._min_sensing_cost:
+                    self._min_sensing_cost = sensing_cost
+            transmission_cost = sum(transmission_cost_of_vehicles) / len(transmission_cost_of_vehicles)
+            if not np.isinf(transmission_cost) and not np.isnan(transmission_cost):
+                transmission_cost_views.append(transmission_cost)
+                if transmission_cost > self._max_transmission_cost:
+                    self._max_transmission_cost = transmission_cost
+                if transmission_cost < self._min_transmission_cost:
+                    self._min_transmission_cost = transmission_cost
         
         """Normalize the timeliness, consistency, redundancy, and cost of views"""
         timeliness_views_normalized = []
         consistency_views_normalized = []
         redundancy_views_normalized = []
-        cost_views_normalized = []
-
+        sensing_cost_views_normalized = []
+        transmission_cost_views_normalized = []
+        
         for i in range(len(timeliness_views)):
             if self._max_timeliness != -1 and self._min_timeliness != 100000000 and (self._max_timeliness - self._min_timeliness) != 0 and  \
                 not np.isnan(timeliness_views[i] - self._min_timeliness) / (self._max_timeliness - self._min_timeliness):
@@ -713,24 +757,48 @@ class vehicularNetworkEnv(baseEnvironment):
             else:
                 redundancy_views_normalized.append(-1)
 
-            if self._max_cost != -1 and self._min_cost != 100000000 and (self._max_cost - self._min_cost) != 0 and \
-                not np.isnan(cost_views[i] - self._min_cost) / (self._max_cost - self._min_cost):
-                cost_views_normalized.append(
-                    (cost_views[i] - self._min_cost) / (self._max_cost - self._min_cost)
+            if self._max_sensing_cost != -1 and self._min_sensing_cost != 100000000 and (self._max_sensing_cost - self._min_sensing_cost) != 0 and \
+                not np.isnan(sensing_cost_views[i] - self._min_sensing_cost) / (self._max_sensing_cost - self._min_sensing_cost):
+                sensing_cost_views_normalized.append(
+                    (sensing_cost_views[i] - self._min_sensing_cost) / (self._max_sensing_cost - self._min_sensing_cost)
                 )
             else:
-                cost_views_normalized.append(-1)
+                sensing_cost_views_normalized.append(-1)
+                
+            if self._max_transmission_cost != -1 and self._min_transmission_cost != 100000000 and (self._max_transmission_cost - self._min_transmission_cost) != 0 and \
+                not np.isnan(transmission_cost_views[i] - self._min_transmission_cost) / (self._max_transmission_cost - self._min_transmission_cost):
+                transmission_cost_views_normalized.append(
+                    (transmission_cost_views[i] - self._min_transmission_cost) / (self._max_transmission_cost - self._min_transmission_cost)
+                )
+            else:
+                transmission_cost_views_normalized.append(-1)
+        # print("************************************************************************************************************************")
+        # print("max_timeliness: ", self._max_timeliness)
+        # print("max_consistency: ", self._max_consistency)
+        # print("max_redundancy: ", self._max_redundancy)
+        # print("max_sensing_cost: ", self._max_sensing_cost)
+        # print("max_transmission_cost: ", self._max_transmission_cost)
         # print("timeliness_views_normalized: ", timeliness_views_normalized)
         # print("consistency_views_normalized: ", consistency_views_normalized)
         # print("redundancy_views_normalized: ", redundancy_views_normalized)
-        # print("cost_views_normalized: ", cost_views_normalized)
-        
+        # print("sensing_cost_views_normalized: ", sensing_cost_views_normalized)
+        # print("transmission_cost_views_normalized: ", transmission_cost_views_normalized)
+
+        if len(timeliness_views_normalized) > 0:        
+            average_timeliness = sum(timeliness_views_normalized) / len(timeliness_views_normalized)
+        if len(consistency_views_normalized) > 0:
+            average_consistency = sum(consistency_views_normalized) / len(consistency_views_normalized)
+        if len(redundancy_views_normalized) > 0:
+            average_redundancy = sum(redundancy_views_normalized) / len(redundancy_views_normalized)
+        if len(sensing_cost_views_normalized) > 0:
+            average_sensing_cost = sum(sensing_cost_views_normalized) / len(sensing_cost_views_normalized)
+        if len(transmission_cost_views_normalized) > 0:
+            average_transmission_cost = sum(transmission_cost_views_normalized) / len(transmission_cost_views_normalized)
     
-        if vehicularNetworkEnv.is_reward_matrix:
+        if self.is_reward_matrix:
         
             """Compute the age of view."""
             age_of_view = []
-            redundancy_of_view = []
             cost_of_view = []
             for i in range(len(timeliness_views_normalized)):
                 if timeliness_views_normalized[i] != -1 and consistency_views_normalized[i] != -1:
@@ -738,11 +806,17 @@ class vehicularNetworkEnv(baseEnvironment):
                         self._config.weight_of_timeliness * timeliness_views_normalized[i] + \
                         self._config.weight_of_consistency * consistency_views_normalized[i]
                     )
-                if  redundancy_views_normalized[i] != -1:
-                    redundancy_of_view.append(redundancy_views_normalized[i])
-                if  cost_views_normalized[i] != -1:
-                    cost_of_view.append(cost_views_normalized[i])
-
+                if  redundancy_views_normalized[i] != -1 and sensing_cost_views_normalized[i] != -1 and transmission_cost_views_normalized[i] != -1:
+                    cost_of_view.append(
+                        self._config.weight_of_redundancy * redundancy_views_normalized[i] + \
+                        self._config.weight_of_sensing_cost * sensing_cost_views_normalized[i] + \
+                        self._config.weight_of_tranmission_cost * transmission_cost_views_normalized[i]
+                    )
+                    
+            if len(age_of_view) > 0:
+                average_aov = sum(age_of_view) / len(age_of_view)
+            if len(cost_of_view) > 0:
+                average_cost = sum(cost_of_view) / len(cost_of_view)
             
             """Normalize the age of view."""
             if len(age_of_view) > 0:
@@ -751,14 +825,6 @@ class vehicularNetworkEnv(baseEnvironment):
                 normalized_age_of_view = 1
             normalized_age_of_view = 0 if normalized_age_of_view < 0 else normalized_age_of_view
             normalized_age_of_view = 1 if normalized_age_of_view > 1 else normalized_age_of_view
-
-            """Normalize the redundancy of view."""
-            if len(redundancy_of_view) > 0:
-                normalized_redundancy_of_view = float(1.0 - sum(redundancy_of_view) / len(redundancy_of_view))
-            else:
-                normalized_redundancy_of_view = 1
-            normalized_redundancy_of_view = 0 if normalized_redundancy_of_view < 0 else normalized_redundancy_of_view
-            normalized_redundancy_of_view = 1 if normalized_redundancy_of_view > 1 else normalized_redundancy_of_view
             
             """Normalize the cost of view."""
             if len(cost_of_view) > 0:
@@ -768,28 +834,73 @@ class vehicularNetworkEnv(baseEnvironment):
             normalized_cost_of_view = 0 if normalized_cost_of_view < 0 else normalized_cost_of_view
             normalized_cost_of_view = 1 if normalized_cost_of_view > 1 else normalized_cost_of_view
             
+            cumulative_aov = normalized_age_of_view
+            cumulative_cost = normalized_cost_of_view
+            
             if vehicle_index == -1:
-                vehicularNetworkEnv.append_reward_at_now(
+                self.append_reward_at_now(
                     now=int(self._time_slots.now()),
                     aov=normalized_age_of_view,
-                    redundancy=normalized_redundancy_of_view,
                     cost=normalized_cost_of_view,
                 )
             
-            return normalized_age_of_view, normalized_redundancy_of_view, normalized_cost_of_view
+            return normalized_age_of_view, normalized_cost_of_view, cumulative_aov, cumulative_cost, \
+                average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, \
+                average_sensing_cost, average_transmission_cost
 
         else:
             """Compute the age of view."""
             age_of_view = []
+            cost_of_view = []
             for i in range(len(timeliness_views_normalized)):
-                if timeliness_views_normalized[i] != -1 and consistency_views_normalized[i] != -1 and redundancy_views_normalized[i] != -1 and cost_views_normalized[i] != -1:
+                if timeliness_views_normalized[i] != -1 and consistency_views_normalized[i] != -1:
+                    age_of_view.append(
+                        self._config.weight_of_timeliness * timeliness_views_normalized[i] + \
+                        self._config.weight_of_consistency * consistency_views_normalized[i]
+                    )
+                if  redundancy_views_normalized[i] != -1 and sensing_cost_views_normalized[i] != -1 and transmission_cost_views_normalized[i] != -1:
+                    cost_of_view.append(
+                        self._config.weight_of_redundancy * redundancy_views_normalized[i] + \
+                        self._config.weight_of_sensing_cost * sensing_cost_views_normalized[i] + \
+                        self._config.weight_of_tranmission_cost * transmission_cost_views_normalized[i]
+                    )
+                    
+            if len(age_of_view) > 0:
+                average_aov = sum(age_of_view) / len(age_of_view)
+            if len(cost_of_view) > 0:
+                average_cost = sum(cost_of_view) / len(cost_of_view)
+            
+            """Normalize the age of view."""
+            if len(age_of_view) > 0:
+                normalized_age_of_view = float(1.0 - sum(age_of_view) / len(age_of_view))
+            else:
+                normalized_age_of_view = 1
+            normalized_age_of_view = 0 if normalized_age_of_view < 0 else normalized_age_of_view
+            normalized_age_of_view = 1 if normalized_age_of_view > 1 else normalized_age_of_view
+            
+            """Normalize the cost of view."""
+            if len(cost_of_view) > 0:
+                normalized_cost_of_view = float(1.0 - sum(cost_of_view) / len(cost_of_view))
+            else:
+                normalized_cost_of_view = 1
+            normalized_cost_of_view = 0 if normalized_cost_of_view < 0 else normalized_cost_of_view
+            normalized_cost_of_view = 1 if normalized_cost_of_view > 1 else normalized_cost_of_view
+            
+            cumulative_aov = normalized_age_of_view
+            cumulative_cost = normalized_cost_of_view
+            
+            
+            """Compute the age of view."""
+            age_of_view = []
+            for i in range(len(timeliness_views_normalized)):
+                if timeliness_views_normalized[i] != -1 and consistency_views_normalized[i] != -1 and redundancy_views_normalized[i] != -1 and sensing_cost_views_normalized[i] != -1 and transmission_cost_views_normalized[i] != -1:
                     age_of_view.append(
                         self._config.static_weight_of_timeliness * timeliness_views_normalized[i] + \
                         self._config.static_weight_of_consistency * consistency_views_normalized[i] + \
                         self._config.static_weight_of_redundancy * redundancy_views_normalized[i] + \
-                        self._config.static_weight_of_cost * cost_views_normalized[i]
+                        self._config.static_weight_of_sensing_cost * sensing_cost_views_normalized[i] + \
+                        self._config.static_weight_of_tranmission_cost * transmission_cost_views_normalized[i]
                     )
-
             if len(age_of_view) == 0:
                 return -1
 
@@ -798,11 +909,13 @@ class vehicularNetworkEnv(baseEnvironment):
             reward = 1 if reward > 1 else reward
 
             if vehicle_index == -1:
-                vehicularNetworkEnv.append_reward_at_now(
+                self.append_reward_at_now(
                     now=int(self._time_slots.now()),
                     reward=reward,
                 )
-            return reward
+            return reward, cumulative_aov, cumulative_cost, \
+                average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, \
+                average_sensing_cost, average_transmission_cost
 
     """Define the observation spaces of vehicle."""
     def vehicle_observation_spec(self) -> specs.BoundedArray:
@@ -916,7 +1029,7 @@ class vehicularNetworkEnv(baseEnvironment):
 
     def reward_spec(self):
         """Define and return the reward space."""
-        if vehicularNetworkEnv.is_reward_matrix:
+        if self.is_reward_matrix:
             return specs.Array(
                 shape=(self._reward_size, self._config.weighting_number), 
                 dtype=float, 
@@ -1113,7 +1226,8 @@ class vehicularNetworkEnv(baseEnvironment):
         Returns:
             SNR: the SNR of the transmission
         """
-        return (1.0 / np.power(10, (white_gaussian_noise / 10)) / 1000) * \
+        
+        return (1.0 / (np.power(10, (white_gaussian_noise / 10)) / 1000)) * \
             np.power(np.abs(channel_fading_gain), 2) * \
             1.0 / (np.power(distance, path_loss_exponent)) * \
             transmission_power / 1000
@@ -1150,6 +1264,10 @@ class vehicularNetworkEnv(baseEnvironment):
                     path_loss_exponent=path_loss_exponent,
                     transmission_power=transmission_power
                 )
+                # print("distance: " + str(distance) + " transmission_power: " + str(transmission_power) + " channel_fading_gain: " + str(channel_fading_gain) + " SNR: " + str(SNR))
+                # print("SNR: ", SNR)
+                # print("SNR_target: ", SNR_target)
+                # print("SNR value: ", 10 * np.log10(SNR))
                 if SNR != 0 and 10 * np.log10(SNR) >= SNR_target:
                     successful_transmission_number += 1
             self._successful_tansmission_probability[hash_id] = successful_transmission_number / total_number
@@ -1185,7 +1303,7 @@ class vehicularNetworkEnv(baseEnvironment):
         """
 
         minimum_transmission_power = transmission_power
-        minimum_power = 0
+        minimum_power = 1
         maximum_power = transmission_power
         while_flag = True
         mid = minimum_power
@@ -1209,12 +1327,15 @@ class vehicularNetworkEnv(baseEnvironment):
             SNR_target=SNR_target
         )
         if mid_probabiliity <= probabiliity_threshold:
+            # print("mid_probabiliity: " + str(mid_probabiliity))
+            # print("probabiliity_threshold: " + str(probabiliity_threshold))
+            
             minimum_transmission_power = mid
             while_flag = False
         
         while while_flag:
             mid = (minimum_power + maximum_power) / 2
-            mid_plus = mid + 0.1
+            mid_plus = mid + 1
             mid_probabiliity = self.compute_successful_tansmission_probability(
                 white_gaussian_noise=white_gaussian_noise,
                 distance=distance,
@@ -1295,10 +1416,13 @@ class vehicularNetworkEnv(baseEnvironment):
         frequencies = self.rescale_the_list_to_small_than_one(frequencies)
         for index, values in enumerate(frequencies):
             if sensed_information[index] == 1:
-                sensing_frequencies[index] = (values - 0.01) / information_list.get_mean_service_time_by_vehicle_and_type(
+                sensing_frequencies[index] = values / information_list.get_mean_service_time_by_vehicle_and_type(
                     vehicle_index=vehicle_index,
                     data_type_index=vehicle_list.get_vehicle(vehicle_index).get_information_type_canbe_sensed(index)
                 )
+                # if sensing_frequencies[index] < 0.01:
+                #     print("sensing_frequencies[index]: ", sensing_frequencies[index])
+                #     print("values: ", values)
         for index, values in enumerate(network_output[2*sensed_information_number: 3*sensed_information_number]):
             if sensed_information[index] == 1:
                 uploading_priorities[index] = values
@@ -1317,6 +1441,7 @@ class vehicularNetworkEnv(baseEnvironment):
             SNR_target=SNR_target,
             probabiliity_threshold=probabiliity_threshold
         )
+        # print("minimum_transmission_power: ", minimum_transmission_power)
 
         transmisson_power = minimum_transmission_power + network_output[-1] * \
             (vehicle_list.get_vehicle(vehicle_index).get_transmission_power() - minimum_transmission_power)

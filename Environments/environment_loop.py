@@ -3,7 +3,7 @@
 import operator
 import time
 from typing import Optional, Sequence
-from Agents.MAMOD3PG import base
+from Environments import base
 from acme.utils import counting
 from acme.utils import loggers
 from acme.utils import observers as observers_lib
@@ -82,11 +82,34 @@ class EnvironmentLoop(base.Worker):
             # and the initial timestep.
             observer.observe_first(self._environment, timestep)
 
+        cumulative_aovs: float = 0
+        cumulative_costs: float = 0
+        average_aovs: float = 0
+        average_costs: float = 0
+        average_timelinesss: float = 0
+        average_consistencys: float = 0
+        average_redundancys: float = 0
+        average_sensing_costs: float = 0
+        average_transmission_costs: float = 0         
+        
         # Run an episode.
         while not timestep.last():
             # Generate an action from the agent's policy and step the environment.
             action = self._actor.select_action(timestep.observation, timestep.vehicle_observation)
-            timestep = self._environment.step(action)
+            timestep, cumulative_aov, cumulative_cost, \
+                average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, \
+                average_sensing_cost, average_transmission_cost = self._environment.step(action)
+            
+            cumulative_aovs += cumulative_aov
+            cumulative_costs += cumulative_cost
+            average_aovs += average_aov
+            average_costs += average_cost
+            average_timelinesss += average_timeliness
+            average_consistencys += average_consistency
+            average_redundancys += average_redundancy
+            average_sensing_costs += average_sensing_cost
+            average_transmission_costs += average_transmission_cost
+            
             # Have the agent observe the timestep and let the actor update itself.
             self._actor.observe(action=action, next_timestep=timestep)
             for observer in self._observers:
@@ -111,11 +134,28 @@ class EnvironmentLoop(base.Worker):
 
         # Collect the results and combine with counts.
         steps_per_second = episode_steps / (time.time() - start_time)
+        average_aovs /= episode_steps
+        average_costs /= episode_steps
+        average_timelinesss /= episode_steps
+        average_consistencys /= episode_steps
+        average_redundancys /= episode_steps
+        average_sensing_costs /= episode_steps
+        average_transmission_costs /= episode_steps
+        
         result = {
             'label': self._label,
             'episode_length': episode_steps,
             'episode_return': episode_return,
             'steps_per_second': steps_per_second,
+            'cumulative_aovs': cumulative_aovs,
+            'cumulative_costs': cumulative_costs,
+            'average_aovs': average_aovs,
+            'average_costs': average_costs,
+            'average_timelinesss': average_timelinesss,
+            'average_consistencys': average_consistencys,
+            'average_redundancys': average_redundancys,
+            'average_sensing_costs': average_sensing_costs,
+            'average_transmission_costs': average_transmission_costs,
         }
         result.update(counts)
 

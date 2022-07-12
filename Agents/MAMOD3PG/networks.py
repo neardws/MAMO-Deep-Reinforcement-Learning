@@ -142,6 +142,7 @@ def make_default_MAMOD3PGNetworks(
     edge_vmax: float = 150.,
     edge_num_atoms: int = 3,
     
+    random_action_size: Optional[int] = None,
     vehicle_number: Optional[int] = None,
     vehicle_action_number: Optional[int] = None,
     vehicle_observation_size: Optional[int] = None,
@@ -173,8 +174,8 @@ def make_default_MAMOD3PGNetworks(
             other_action_size=vehicle_action_number * (vehicle_number - 1),
             action_size=vehicle_action_number,
             weights_size=weights_number,
-            random_action_size=10,
-            reward_size=3,
+            random_action_size=random_action_size,
+            reward_size=weights_number,
         ),
         networks.DiscreteValuedHead(vehicle_vmin, vehicle_vmax, vehicle_num_atoms),
     ])
@@ -203,8 +204,8 @@ def make_default_MAMOD3PGNetworks(
             other_action_size=vehicle_action_number * vehicle_number,
             action_size=edge_action_number,
             weights_size=weights_number,
-            random_action_size=10,
-            reward_size=3,
+            random_action_size=random_action_size,
+            reward_size=weights_number,
         ),
         networks.DiscreteValuedHead(edge_vmin, edge_vmax, edge_num_atoms),
     ])

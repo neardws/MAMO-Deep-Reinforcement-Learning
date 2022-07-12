@@ -2,7 +2,7 @@
 import sys
 sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
 
-from Agents.MAMOD3PG.environment_loop import EnvironmentLoop
+from Environments.environment_loop import EnvironmentLoop
 from acme.utils import counting
 from Agents.MAMOD3PG.agent import D3PGConfig, MOD3PGAgent
 from Environments.environment import vehicularNetworkEnv, make_environment_spec

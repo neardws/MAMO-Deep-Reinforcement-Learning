@@ -25,7 +25,7 @@ def main(_):
         vehicle_observation_size=environment._vehicle_observation_size,
         edge_observation_size=environment._edge_observation_size,
         edge_action_number=environment._edge_action_size,
-        
+        random_action_size=environment_config.random_action_size,
         weights_number=environment._config.weighting_number,
     )
 

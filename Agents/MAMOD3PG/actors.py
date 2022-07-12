@@ -2,7 +2,7 @@
 
 from typing import Optional
 from acme import adders
-from Agents.MAMOD3PG import base
+from Environments import base
 from acme import types
 from acme.tf import utils as tf2_utils
 from acme.tf import variable_utils as tf2_variable_utils
