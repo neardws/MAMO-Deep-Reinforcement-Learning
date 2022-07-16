@@ -110,7 +110,7 @@ class MAMOD3PGNetworks:
 
 def make_policy_network(
         action_spec,
-        policy_layer_sizes: Sequence[int] = (256, 256, 256),
+        policy_layer_sizes: Sequence[int] = (256, 128),
     ) -> types.TensorTransformation:
         """Creates the networks used by the agent."""
 
@@ -129,20 +129,20 @@ def make_policy_network(
 
 def make_default_MAMOD3PGNetworks(
     vehicle_action_spec: Optional[None] = None,
-    vehicle_policy_layer_sizes: Sequence[int] = (256, 256, 128),
-    vehicle_critic_layer_sizes: Sequence[int] = (512, 512, 256),
+    vehicle_policy_layer_sizes: Sequence[int] = (256, 128),
+    vehicle_critic_layer_sizes: Sequence[int] = (512, 256),
     vehicle_vmin: float = -150.,
     vehicle_vmax: float = 150.,
-    vehicle_num_atoms: int = 3,
+    vehicle_num_atoms: int = 2,
             
     edge_action_spec: Optional[None] = None,
-    edge_policy_layer_sizes: Sequence[int] = (256, 256, 128),
-    edge_critic_layer_sizes: Sequence[int] = (512, 512, 256),
+    edge_policy_layer_sizes: Sequence[int] = (256, 128),
+    edge_critic_layer_sizes: Sequence[int] = (512, 256),
     edge_vmin: float = -150.,
     edge_vmax: float = 150.,
-    edge_num_atoms: int = 3,
+    edge_num_atoms: int = 2,
     
-    random_action_size: Optional[int] = None,
+    random_action_size: Optional[int] = 10,
     vehicle_number: Optional[int] = None,
     vehicle_action_number: Optional[int] = None,
     vehicle_observation_size: Optional[int] = None,
@@ -169,7 +169,6 @@ def make_default_MAMOD3PGNetworks(
         CriticMultiplexer(),
         DuellingMLP(
             hidden_sizes=vehicle_critic_layer_sizes,
-            
             observation_size=vehicle_observation_size,
             other_action_size=vehicle_action_number * (vehicle_number - 1),
             action_size=vehicle_action_number,
@@ -199,7 +198,6 @@ def make_default_MAMOD3PGNetworks(
         CriticMultiplexer(),
         DuellingMLP(
             hidden_sizes=edge_critic_layer_sizes,
-            
             observation_size=edge_observation_size,
             other_action_size=vehicle_action_number * vehicle_number,
             action_size=edge_action_number,

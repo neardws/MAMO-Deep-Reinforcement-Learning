@@ -232,7 +232,7 @@ class D3PGLearner(acme.Learner):
             # [0 * 2, vehicle_observation_size]
             # .......
             vehicles_o_t = self._target_vehicle_observation_network(
-                tf.reshape(transitions.vehicle_observation, shape=[-1, self._vehicle_observation_size]))
+                tf.reshape(transitions.vehicle_next_observation, shape=[-1, self._vehicle_observation_size]))
             # the shape of vehicles_o_t is [batch_size * vehicle_number, _]
             vehicles_o_t = tree.map_structure(tf.stop_gradient, vehicles_o_t)
             # the shape of vehicles_a_t is [batch_size * vehicle_number, vehicle_action_size]

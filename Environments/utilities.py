@@ -315,7 +315,10 @@ class sensingAndQueuing(object):
         arrival_intervals = np.zeros((self._sensed_information_number,))
         for i in range(self._sensed_information_number):
             if self._sensed_information[i] == 1:
-                arrival_intervals[i] = 1 / self._sensing_frequencies[i]
+                if self._sensing_frequencies[i] != 0:
+                    arrival_intervals[i] = 1 / self._sensing_frequencies[i]
+                else:
+                    arrival_intervals[i] = self._max_arrival_intervals
                 if arrival_intervals[i] > self._max_arrival_intervals:
                     arrival_intervals[i] = self._max_arrival_intervals
         return arrival_intervals

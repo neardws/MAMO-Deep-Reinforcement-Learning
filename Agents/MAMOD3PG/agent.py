@@ -1,7 +1,7 @@
 """D3PG agent implementation."""
 import copy
 import dataclasses
-from typing import Callable, Iterator, List, Optional, Union, Sequence
+from typing import Iterator, List, Optional, Union, Sequence
 import acme
 from Environments.environment_loop import EnvironmentLoop
 from acme import adders
@@ -22,7 +22,7 @@ import reverb
 import sonnet as snt
 import launchpad as lp
 import functools
-import dm_env
+from Utilities.FileOperator import load_obj
 from Agents.MAMOD3PG.networks import MAMOD3PGNetworks, make_default_MAMOD3PGNetworks
 
 Replicator = Union[snt.distribute.Replicator, snt.distribute.TpuReplicator]
@@ -54,17 +54,18 @@ class D3PGConfig:
         checkpoint: boolean indicating whether to checkpoint the learner.
         accelerator: 'TPU', 'GPU', or 'CPU'. If omitted, the first available accelerator type from ['TPU', 'GPU', 'CPU'] will be selected.
     """
-    discount: float = 0.99
+    discount: float = 0.996
     batch_size: int = 256
     prefetch_size: int = 4
     target_update_period: int = 100
+    variable_update_period: int = 500
     vehicle_policy_optimizer: Optional[snt.Optimizer] = None
     vehicle_critic_optimizer: Optional[snt.Optimizer] = None
     edge_policy_optimizer: Optional[snt.Optimizer] = None
     edge_critic_optimizer: Optional[snt.Optimizer] = None
-    min_replay_size: int = 10000
+    min_replay_size: int = 1000
     max_replay_size: int = 1000000
-    samples_per_insert: Optional[float] = 32.0
+    samples_per_insert: Optional[float] = 8.0
     n_step: int = 1
     sigma: float = 0.3
     clipping: bool = True
@@ -113,7 +114,7 @@ class MOD3PGAgent(base_agent.Agent):
                 edge_action_number=environment._edge_action_size,
                 
                 weights_number=environment._config.weighting_number,
-                random_action_size=environment._config.random_action_size,
+                # random_action_size=environment._config.random_action_size,
             )
         else:
             online_networks = networks
@@ -235,7 +236,7 @@ class MOD3PGAgent(base_agent.Agent):
                 client=variable_source,
                 variables={'vehicle_policy': vehicle_policy_network.variables,
                             'edge_policy': edge_policy_network.variables},
-                update_period=1000,
+                update_period=self._config.variable_update_period,
             )
 
             # Make sure not to use a random policy after checkpoint restoration by
@@ -315,13 +316,13 @@ class MAMODistributedDDPG:
     def __init__(
         self,
         config: D3PGConfig,
-        environment_factory: Callable[[bool], dm_env.Environment],
+        environment_file_name: str,
         environment_spec,
         networks: Optional[MAMOD3PGNetworks] = None,
         num_actors: int = 1,
         num_caches: int = 0,
         max_actor_steps: Optional[int] = None,
-        log_every: float = 30.0,
+        log_every: float = 5.0,
     ):
         """Initialize the MAD3PG agent."""
         self._config = config
@@ -337,12 +338,12 @@ class MAMODistributedDDPG:
         self._log_every = log_every
         self._networks = networks
         self._environment_spec = environment_spec
-        self._environment_factory = environment_factory
+        self._environment_file_name = environment_file_name
         # Create the agent.
         
         self._agent = MOD3PGAgent(
             config=self._config,
-            environment=self._environment_factory(False),
+            environment=load_obj(self._environment_file_name),
             environment_spec=self._environment_spec,
             networks=self._networks,
         )
@@ -411,7 +412,7 @@ class MAMODistributedDDPG:
         )
         
         # Create the environment
-        environment = self._environment_factory(False)
+        environment=load_obj(self._environment_file_name)
 
         # Create the agent.
         actor = self._agent.make_actor(
@@ -452,7 +453,7 @@ class MAMODistributedDDPG:
         vehicle_policy_network, edge_policy_network = networks.make_policy(self._environment_spec)
 
         # Make the environment
-        environment = self._environment_factory(True)
+        environment=load_obj(self._environment_file_name)
 
         # Create the agent.
         actor = self._agent.make_actor(
