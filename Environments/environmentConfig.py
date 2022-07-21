@@ -85,4 +85,4 @@ class vehicularNetworkEnvConfig:
     weight_of_sensing_cost: float = 0.4
     weight_of_tranmission_cost: float = 0.4
     
-    random_action_size: int = 32
+    random_action_size: int = 10

@@ -2,23 +2,46 @@
 
 # change_bandwidth
 environment_file_with_reward_matrix_bandwidth = [
-    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth2-power100-information10/init_environment_62f3b3ce01434cbdac014d70f47ceea4_with_reward_matrix.pkl",
-    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth2_5-power100-information10/init_environment_1d4a1b87dae8465db2da4861e36bf624_with_reward_matrix.pkl",
-    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth3-power100-information10/init_environment_05038c2540b44596827010d673210ab7_with_reward_matrix.pkl",
-    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth3_5-power100-information10/init_environment_735b59cca2a446dcb69867ec2f2eabcb_with_reward_matrix.pkl",
-    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth4-power100-information10/init_environment_8b0009ddc20244e28879a9ec57298fe5_with_reward_matrix.pkl",
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth1/init_environment_6fbfe20990c8494baba41f8111576436_with_reward_matrix.pkl",
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth1_5/init_environment_02eca6080a0c4742b245686290f1677b_with_reward_matrix.pkl",
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth2/init_environment_1d334841a1bc4aaeac9b5434c255f666_with_reward_matrix.pkl",
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth2_5/init_environment_453fcbd8a43342a5a8d78d03e2ce453d_with_reward_matrix.pkl",
+    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth3/init_environment_41087e636ae9422ca6e39e8e041b56a5_with_reward_matrix.pkl",
 ]
+environment_file_without_reward_matrix_bandwidth = [
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth1/init_environment_6fbfe20990c8494baba41f8111576436_without_reward_matrix.pkl",
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth1_5/init_environment_02eca6080a0c4742b245686290f1677b_without_reward_matrix.pkl",
+    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth2/init_environment_1d334841a1bc4aaeac9b5434c255f666_without_reward_matrix.pkl",
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth2_5/init_environment_453fcbd8a43342a5a8d78d03e2ce453d_without_reward_matrix.pkl",
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth3/init_environment_41087e636ae9422ca6e39e8e041b56a5_without_reward_matrix.pkl",
+]
+
 # change_power
 environment_file_with_reward_matrix_power = [
-    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth3-power50-information10/init_environment_8a201176f5174b7c9250f52d9b2cd20d_with_reward_matrix.pkl",
-    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth3-power75-information10/init_environment_c5232d0dd7ee461da3c2c48959f2d909_with_reward_matrix.pkl",
-    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth3-power150-information10/init_environment_5f78a50aa2634b43b1472c63fde07387_with_reward_matrix.pkl",
-    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth3-power200-information10/init_environment_9f343c0b95a944eab6d5c92601fe7adc_with_reward_matrix.pkl",
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/power50/init_environment_b1b94f6fc355493696179051f2e35b0a_with_reward_matrix.pkl",
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/power75/init_environment_7aebd8303016495daf115ffdbd351708_with_reward_matrix.pkl",
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/power125/init_environment_2f205b44a3b54960beca92308927f216_with_reward_matrix.pkl",
+    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/power150/init_environment_07609521e9a84922a1cf3a268ef9a40a_with_reward_matrix.pkl",
 ]
+
+environment_file_without_reward_matrix_power = [
+    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/power50/init_environment_b1b94f6fc355493696179051f2e35b0a_without_reward_matrix.pkl",
+    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/power75/init_environment_7aebd8303016495daf115ffdbd351708_without_reward_matrix.pkl",
+    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/power125/init_environment_2f205b44a3b54960beca92308927f216_without_reward_matrix.pkl",
+    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/power150/init_environment_07609521e9a84922a1cf3a268ef9a40a_without_reward_matrix.pkl",
+]
+
 # change information number
 environment_file_with_reward_matrix_information = [
-    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth3-power100-information6/init_environment_6fe9866e5d7a41f3a6c7b7b70220acaf_with_reward_matrix.pkl",
-    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth3-power100-information8/init_environment_ed10a37303494cfd97969ae687d11366_with_reward_matrix.pkl",
-    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth3-power100-information12/init_environment_bec9815f6b4446fdad438909af22f43c_with_reward_matrix.pkl",
-    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/bandwidth3-power100-information14/init_environment_a543f81146fb46c694e979c51492bcc5_with_reward_matrix.pkl",
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/number6/init_environment_b43c0c12d174469ebe12b417cb66d231_with_reward_matrix.pkl",
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/number8/init_environment_e136961f90a1400cb41500cd014f924d_with_reward_matrix.pkl",
+    # "/home/neardws/Documents/AoV-Journal-Algorithm/Data/number12/init_environment_6485bf06c7d94017ba6cc004f9f905a0_with_reward_matrix.pkl",
+    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/number14/init_environment_a326cd4e2504440f87a12e2bf31e0a97_with_reward_matrix.pkl",
+]
+
+environment_file_without_reward_matrix_information = [
+    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/number6/init_environment_b43c0c12d174469ebe12b417cb66d231_without_reward_matrix.pkl",
+    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/number8/init_environment_e136961f90a1400cb41500cd014f924d_without_reward_matrix.pkl",
+    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/number12/init_environment_6485bf06c7d94017ba6cc004f9f905a0_without_reward_matrix.pkl",
+    "/home/neardws/Documents/AoV-Journal-Algorithm/Data/number14/init_environment_a326cd4e2504440f87a12e2bf31e0a97_without_reward_matrix.pkl"
 ]

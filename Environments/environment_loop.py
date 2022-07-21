@@ -96,9 +96,7 @@ class EnvironmentLoop(base.Worker):
         while not timestep.last():
             # Generate an action from the agent's policy and step the environment.
             action = self._actor.select_action(timestep.observation, timestep.vehicle_observation)
-            timestep, cumulative_aov, cumulative_cost, \
-                average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, \
-                average_sensing_cost, average_transmission_cost = self._environment.step(action)
+            timestep, cumulative_aov, cumulative_cost, average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, average_sensing_cost, average_transmission_cost = self._environment.step(action)
             
             cumulative_aovs += cumulative_aov
             cumulative_costs += cumulative_cost

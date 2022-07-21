@@ -371,10 +371,12 @@ class vehicularNetworkEnv(baseEnvironment):
                 average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, \
                 average_sensing_cost, average_transmission_cost
     
-        else:       
-            baseline_reward, cumulative_aov, cumulative_cost, \
-                average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, \
-                average_sensing_cost, average_transmission_cost = self.compute_reward(
+        else:
+            # print("reward: ", self.compute_reward(
+            #         information_objects_ordered_by_views=information_objects[0],
+            #         vehicle_actions=vehicle_actions,
+            #     ))
+            baseline_reward, cumulative_aov, cumulative_cost, average_aov, average_cost, average_timeliness, average_consistency, average_redundancy, average_sensing_cost, average_transmission_cost = self.compute_reward(
                     information_objects_ordered_by_views=information_objects[0],
                     vehicle_actions=vehicle_actions,
                 )
@@ -822,7 +824,7 @@ class vehicularNetworkEnv(baseEnvironment):
             if len(age_of_view) > 0:
                 normalized_age_of_view = float(1.0 - sum(age_of_view) / len(age_of_view))
             else:
-                normalized_age_of_view = 1
+                normalized_age_of_view = 0
             normalized_age_of_view = 0 if normalized_age_of_view < 0 else normalized_age_of_view
             normalized_age_of_view = 1 if normalized_age_of_view > 1 else normalized_age_of_view
             
@@ -830,7 +832,7 @@ class vehicularNetworkEnv(baseEnvironment):
             if len(cost_of_view) > 0:
                 normalized_cost_of_view = float(1.0 - sum(cost_of_view) / len(cost_of_view))
             else:
-                normalized_cost_of_view = 1
+                normalized_cost_of_view = 0
             normalized_cost_of_view = 0 if normalized_cost_of_view < 0 else normalized_cost_of_view
             normalized_cost_of_view = 1 if normalized_cost_of_view > 1 else normalized_cost_of_view
             
@@ -874,7 +876,7 @@ class vehicularNetworkEnv(baseEnvironment):
             if len(age_of_view) > 0:
                 normalized_age_of_view = float(1.0 - sum(age_of_view) / len(age_of_view))
             else:
-                normalized_age_of_view = 1
+                normalized_age_of_view = 0
             normalized_age_of_view = 0 if normalized_age_of_view < 0 else normalized_age_of_view
             normalized_age_of_view = 1 if normalized_age_of_view > 1 else normalized_age_of_view
             
@@ -882,7 +884,7 @@ class vehicularNetworkEnv(baseEnvironment):
             if len(cost_of_view) > 0:
                 normalized_cost_of_view = float(1.0 - sum(cost_of_view) / len(cost_of_view))
             else:
-                normalized_cost_of_view = 1
+                normalized_cost_of_view = 0
             normalized_cost_of_view = 0 if normalized_cost_of_view < 0 else normalized_cost_of_view
             normalized_cost_of_view = 1 if normalized_cost_of_view > 1 else normalized_cost_of_view
             
@@ -901,10 +903,11 @@ class vehicularNetworkEnv(baseEnvironment):
                         self._config.static_weight_of_sensing_cost * sensing_cost_views_normalized[i] + \
                         self._config.static_weight_of_tranmission_cost * transmission_cost_views_normalized[i]
                     )
-            if len(age_of_view) == 0:
-                return -1
 
-            reward = float(1.0 - sum(age_of_view) / len(age_of_view))
+            if len(age_of_view) > 0:
+                reward = float(1.0 - sum(age_of_view) / len(age_of_view))
+            else:
+                reward = 0
             reward = 0 if reward < 0 else reward
             reward = 1 if reward > 1 else reward
 
