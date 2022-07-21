@@ -13,7 +13,7 @@ class RandomActor(core.Actor):
         self._spec = spec
         self.num_updates = 0
 
-    def select_action(self, observation: types.NestedArray) -> types.NestedArray:
+    def select_action(self, observation: types.NestedArray, vehicle_observation: types.NestedArray) -> types.NestedArray:
         _validate_spec(self._spec.observations, observation)
         return _generate_from_spec(self._spec.actions)
 

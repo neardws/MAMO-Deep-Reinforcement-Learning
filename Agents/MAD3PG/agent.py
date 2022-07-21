@@ -1,20 +1,17 @@
 """D3PG agent implementation."""
 import copy
 import dataclasses
-from typing import Callable, Iterator, List, Optional, Tuple, Union, Sequence
+from typing import Iterator, List, Optional, Union, Sequence
 import acme
-from Agents.MAD3PG.environment_loop import EnvironmentLoop
+from Environments.environment_loop import EnvironmentLoop
 from acme import adders
 from acme import core
 from acme import datasets
-from acme import types
 from acme.adders import reverb as reverb_adders
 from Agents.MAD3PG.adder import NStepTransitionAdder
 from Agents.MAD3PG import actors
 from Agents.MAD3PG import learning
 from Agents.MAD3PG import base_agent
-from acme.tf import networks as network_utils
-from acme.tf import utils
 from acme.tf import variable_utils
 from acme.tf import savers as tf2_savers
 from acme.utils import counting
@@ -25,8 +22,8 @@ import reverb
 import sonnet as snt
 import launchpad as lp
 import functools
-import dm_env
-from Agents.MAD3PG.networks import make_default_D3PGNetworks
+from Utilities.FileOperator import load_obj
+from Agents.MAD3PG.networks import make_default_D3PGNetworks, D3PGNetworks
 
 Replicator = Union[snt.distribute.Replicator, snt.distribute.TpuReplicator]
 
@@ -57,18 +54,19 @@ class D3PGConfig:
         checkpoint: boolean indicating whether to checkpoint the learner.
         accelerator: 'TPU', 'GPU', or 'CPU'. If omitted, the first available accelerator type from ['TPU', 'GPU', 'CPU'] will be selected.
     """
-    discount: float = 0.99
+    discount: float = 0.996
     batch_size: int = 256
     prefetch_size: int = 4
-    target_update_period: int = 4
-    vehicle_policy_optimizer: Optional[snt.Optimizer] = None
-    vehicle_critic_optimizer: Optional[snt.Optimizer] = None
-    edge_policy_optimizer: Optional[snt.Optimizer] = None
-    edge_critic_optimizer: Optional[snt.Optimizer] = None
+    target_update_period: int = 100
+    variable_update_period: int = 500
+    vehicle_policy_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-6)
+    vehicle_critic_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-5)
+    edge_policy_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-5)
+    edge_critic_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-4)
     min_replay_size: int = 1000
     max_replay_size: int = 1000000
-    samples_per_insert: Optional[float] = 1.0
-    n_step: int = 5
+    samples_per_insert: Optional[float] = 8.0
+    n_step: int = 1
     sigma: float = 0.3
     clipping: bool = True
     replay_table_name: str = reverb_adders.DEFAULT_PRIORITY_TABLE
@@ -76,96 +74,6 @@ class D3PGConfig:
     logger: Optional[loggers.Logger] = None
     checkpoint: bool = True
     accelerator: Optional[str] = 'GPU'
-
-
-@dataclasses.dataclass
-class D3PGNetworks:
-    """Structure containing the networks for D3PG."""
-
-    vehicle_policy_network: types.TensorTransformation
-    vehicle_critic_network: types.TensorTransformation
-    vehicle_observation_network: types.TensorTransformation
-
-    edge_policy_network: types.TensorTransformation
-    edge_critic_network: types.TensorTransformation
-    edge_observation_network: types.TensorTransformation
-
-    def __init__(
-        self,
-        vehicle_policy_network: types.TensorTransformation,
-        vehicle_critic_network: types.TensorTransformation,
-        vehicle_observation_network: types.TensorTransformation,
-
-        edge_policy_network: types.TensorTransformation,
-        edge_critic_network: types.TensorTransformation,
-        edge_observation_network: types.TensorTransformation,
-    ):
-        # This method is implemented (rather than added by the dataclass decorator)
-        # in order to allow observation network to be passed as an arbitrary tensor
-        # transformation rather than as a snt Module.
-        self.vehicle_policy_network = vehicle_policy_network
-        self.vehicle_critic_network = vehicle_critic_network
-        self.vehicle_observation_network = utils.to_sonnet_module(vehicle_observation_network)
-
-        self.edge_policy_network = edge_policy_network
-        self.edge_critic_network = edge_critic_network
-        self.edge_observation_network = utils.to_sonnet_module(edge_observation_network)
-
-    def init(
-        self, 
-        environment_spec,
-    ):
-        """Initialize the networks given an environment spec."""
-        # Get observation and action specs.
-        vehicle_observation_spec = environment_spec.vehicle_observations
-        critic_vehicle_action_spec = environment_spec.critic_vehicle_actions
-        edge_observation_spec = environment_spec.edge_observations
-        critic_edge_action_spec = environment_spec.critic_edge_actions
-
-        # Create variables for the observation net and, as a side-effect, get a
-        # spec describing the embedding space.
-        vehicle_emb_spec = utils.create_variables(self.vehicle_observation_network, [vehicle_observation_spec])
-        edge_emb_spec = utils.create_variables(self.edge_observation_network, [edge_observation_spec])
-
-        # Create variables for the policy and critic nets.
-        _ = utils.create_variables(self.vehicle_policy_network, [vehicle_emb_spec])
-        _ = utils.create_variables(self.vehicle_critic_network, [vehicle_emb_spec, critic_vehicle_action_spec])
-
-        _ = utils.create_variables(self.edge_policy_network, [edge_emb_spec])
-        _ = utils.create_variables(self.edge_critic_network, [edge_emb_spec, critic_edge_action_spec])
-
-    def make_policy(
-        self,
-        environment_spec,
-        sigma: float = 0.0,
-    ) -> Tuple[snt.Module, snt.Module]:
-        """Create a single network which evaluates the policy."""
-        # Stack the observation and policy networks.
-        vehicle_stack = [
-            self.vehicle_observation_network,
-            self.vehicle_policy_network,
-        ]
-
-        edge_stack = [
-            self.edge_observation_network,
-            self.edge_policy_network,
-        ]
-
-        # If a stochastic/non-greedy policy is requested, add Gaussian noise on
-        # top to enable a simple form of exploration.
-        # TODO: Refactor this to remove it from the class.
-        if sigma > 0.0:
-            vehicle_stack += [
-                network_utils.ClippedGaussian(sigma),
-                network_utils.ClipToSpec(environment_spec.vehicle_actions),   # Clip to action spec.
-            ]
-            edge_stack += [
-                network_utils.ClippedGaussian(sigma),
-                network_utils.ClipToSpec(environment_spec.edge_actions),    # Clip to action spec.
-            ]
-
-        # Return a network which sequentially evaluates everything in the stack.
-        return snt.Sequential(vehicle_stack), snt.Sequential(edge_stack)
 
 
 class D3PGAgent(base_agent.Agent):
@@ -318,7 +226,7 @@ class D3PGAgent(base_agent.Agent):
                 client=variable_source,
                 variables={'vehicle_policy': vehicle_policy_network.variables,
                             'edge_policy': edge_policy_network.variables},
-                update_period=1000,
+                update_period=self._config.variable_update_period,
             )
 
             # Make sure not to use a random policy after checkpoint restoration by
@@ -398,7 +306,7 @@ class MultiAgentDistributedDDPG:
     def __init__(
         self,
         config: D3PGConfig,
-        environment_factory: Callable[[bool], dm_env.Environment],
+        environment_file_name: str,
         environment_spec,
         networks: Optional[D3PGNetworks] = None,
         num_actors: int = 1,
@@ -420,11 +328,12 @@ class MultiAgentDistributedDDPG:
         self._log_every = log_every
         self._networks = networks
         self._environment_spec = environment_spec
-        self._environment_factory = environment_factory
+        self._environment_file_name = environment_file_name
+        
         # Create the agent.
         self._agent = D3PGAgent(
             config=self._config,
-            environment=self._environment_factory(False),
+            environment=load_obj(self._environment_file_name),
             environment_spec=self._environment_spec,
             networks=self._networks,
         )
@@ -492,8 +401,9 @@ class MultiAgentDistributedDDPG:
             sigma=self._config.sigma,
         )
         
+        
         # Create the environment
-        environment = self._environment_factory(False)
+        environment = load_obj(self._environment_file_name)
 
         # Create the agent.
         actor = self._agent.make_actor(
@@ -534,7 +444,7 @@ class MultiAgentDistributedDDPG:
         vehicle_policy_network, edge_policy_network = networks.make_policy(self._environment_spec)
 
         # Make the environment
-        environment = self._environment_factory(True)
+        environment = load_obj(self._environment_file_name)
 
         # Create the agent.
         actor = self._agent.make_actor(

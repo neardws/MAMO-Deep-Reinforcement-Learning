@@ -6,7 +6,7 @@ from Agents.MAD3PG.environment_loop import EnvironmentLoop
 from acme.utils import counting
 from Agents.MAD3PG.agent import D3PGConfig, D3PGAgent
 from Environments.environment import vehicularNetworkEnv, make_environment_spec
-from Test.environmentConfig_test import vehicularNetworkEnvConfig
+from Environments.environmentConfig import vehicularNetworkEnvConfig
 from absl.testing import absltest
 from Agents.MAD3PG.networks import make_default_D3PGNetworks
 
@@ -35,6 +35,7 @@ class D3PGTest(absltest.TestCase):
         agent = D3PGAgent(
             config=agent_config,
             environment=env,
+            environment_spec=spec,
             networks=networks,
         )
 
