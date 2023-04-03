@@ -91,7 +91,7 @@ class vehicularNetworkEnv(baseEnvironment):
         self._vehicle_list: vehicleList = vehicleList(
             number=self._config.vehicle_number,
             time_slots=self._time_slots,
-            trajectories_file_name=self._config.trajectories_out_file_name,
+            trajectories_file_name=self._config.trajectories_file_name,
             information_number=self._config.information_number,
             sensed_information_number=self._config.sensed_information_number,
             min_sensing_cost=self._config.min_sensing_cost,

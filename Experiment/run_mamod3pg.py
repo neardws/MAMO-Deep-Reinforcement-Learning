@@ -4,7 +4,7 @@ from Agents.MAMOD3PG.networks import make_default_MAMOD3PGNetworks
 from Agents.MAMOD3PG.agent import D3PGConfig, MAMODistributedDDPG
 
 from Utilities.FileOperator import load_obj
-from Experiment.environment_file_name import environment_file_with_reward_matrix_bandwidth as environment_file_list
+from Experiment.environment_file_name import environment_file_with_reward_matrix_information as environment_file_list
 
 
 def main(_):

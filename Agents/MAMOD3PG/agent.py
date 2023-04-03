@@ -59,9 +59,9 @@ class D3PGConfig:
     prefetch_size: int = 4
     target_update_period: int = 100
     variable_update_period: int = 500
-    vehicle_policy_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-6)
-    vehicle_critic_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-5)
-    edge_policy_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-5)
+    vehicle_policy_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-4)
+    vehicle_critic_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-4)
+    edge_policy_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-4)
     edge_critic_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-4)
     min_replay_size: int = 1000
     max_replay_size: int = 1000000

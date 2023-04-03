@@ -265,7 +265,7 @@ class D3PGLearner(acme.Learner):
                 # Critic loss.
                 # print("q_tm1: ", q_tm1)
                 # print("transitions.reward: ", transitions.reward[:, vehicle_index])
-                vehicle_critic_loss = losses.categorical(q_tm1, transitions.reward[:, vehicle_index],
+                vehicle_critic_loss = losses.categorical(q_tm1, transitions.reward[:, -1],
                                                 discount * transitions.discount, q_t)
                 vehicle_critic_losses.append(vehicle_critic_loss)
 

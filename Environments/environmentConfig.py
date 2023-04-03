@@ -22,7 +22,7 @@ class vehicularNetworkEnvConfig:
 
     """Vehicles related."""
     vehicle_number: int = 10
-    trajectories_file_name: str = 'CSV/trajectories_20161116_0800_0850.csv'
+    trajectories_file_name: str = 'CSV/trajectories_20161116_0800_0805.csv'
     sensed_information_number: int = 10  # the maximum number of information, which can be sensed by the vehicle.
     min_sensing_cost: float = 0.1
     max_sensing_cost: float = 1.0
@@ -52,13 +52,13 @@ class vehicularNetworkEnvConfig:
     information_requirements_seed: int = 0
 
     """Vehicle Trajectories Processor related."""
-    trajectories_file_name: str = 'CSV/gps_20161116'
-    longitude_min: float = 104.04565967220308
-    latitude_min: float = 30.654605745741608
-    map_width: float = 1000.0   # meters
-    trajectories_time_start: str = '2016-11-16 08:00:00'
-    trajectories_time_end: str = '2016-11-16 08:05:00'
-    trajectories_out_file_name: str = 'CSV/trajectories_20161116_0800_0850.csv'
+    # trajectories_file_name: str = 'CSV/gps_20161116'
+    # longitude_min: float = 104.04565967220308
+    # latitude_min: float = 30.654605745741608
+    # map_width: float = 1000.0   # meters
+    # trajectories_time_start: str = '2016-11-16 08:00:00'
+    # trajectories_time_end: str = '2016-11-16 08:05:00'
+    # trajectories_out_file_name: str = 'CSV/trajectories_20161116_0800_0850.csv'
 
     """V2I Transmission related."""
     white_gaussian_noise: int = -90  # dBm
