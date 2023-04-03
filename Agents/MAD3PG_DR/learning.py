@@ -14,8 +14,8 @@ import reverb
 import sonnet as snt
 import tensorflow as tf
 import tree
-from Agents.MAD3PG.gradient import GradientTape
-from Agents.MAD3PG import types
+from Agents.MAD3PG_DR.gradient import GradientTape
+from Agents.MAD3PG_DR import types
 
 Replicator = Union[snt.distribute.Replicator, snt.distribute.TpuReplicator]
 
@@ -265,7 +265,7 @@ class D3PGLearner(acme.Learner):
                 # Critic loss.
                 # print("q_tm1: ", q_tm1)
                 # print("transitions.reward: ", transitions.reward[:, vehicle_index])
-                vehicle_critic_loss = losses.categorical(q_tm1, transitions.reward[:, -1],
+                vehicle_critic_loss = losses.categorical(q_tm1, transitions.reward[:, vehicle_index],
                                                 discount * transitions.discount, q_t)
                 vehicle_critic_losses.append(vehicle_critic_loss)
 

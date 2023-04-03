@@ -4,7 +4,7 @@ from Agents.MAD3PG.agent import D3PGConfig, D3PGAgent
 from Agents.MAD3PG.networks import make_default_D3PGNetworks
 from Environments.environment_loop import EnvironmentLoop
 from Utilities.FileOperator import load_obj
-from Experiment.environment_file_name import environment_file_without_reward_matrix_bandwidth as environment_file_list
+from Experiment.environment_file_name import environment_file_without_reward_matrix_information as environment_file_list
 
 
 def main(_):

@@ -8,10 +8,10 @@ from acme import adders
 from acme import core
 from acme import datasets
 from acme.adders import reverb as reverb_adders
-from Agents.MAMOD3PG.adder import NStepTransitionAdder
-from Agents.MAMOD3PG import actors
-from Agents.MAMOD3PG import learning
-from Agents.MAMOD3PG import base_agent
+from Agents.MAD3PG_DR.adder import NStepTransitionAdder
+from Agents.MAD3PG_DR import actors
+from Agents.MAD3PG_DR import learning
+from Agents.MAD3PG_DR import base_agent
 from acme.tf import variable_utils
 from acme.tf import savers as tf2_savers
 from acme.utils import counting
@@ -23,7 +23,7 @@ import sonnet as snt
 import launchpad as lp
 import functools
 from Utilities.FileOperator import load_obj
-from Agents.MAMOD3PG.networks import MAMOD3PGNetworks, make_default_MAMOD3PGNetworks
+from Agents.MAD3PG_DR.networks import make_default_D3PGNetworks, D3PGNetworks
 
 Replicator = Union[snt.distribute.Replicator, snt.distribute.TpuReplicator]
 
@@ -59,9 +59,9 @@ class D3PGConfig:
     prefetch_size: int = 4
     target_update_period: int = 100
     variable_update_period: int = 500
-    vehicle_policy_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-4)
-    vehicle_critic_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-4)
-    edge_policy_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-4)
+    vehicle_policy_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-6)
+    vehicle_critic_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-5)
+    edge_policy_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-5)
     edge_critic_optimizer: Optional[snt.Optimizer] = snt.optimizers.Adam(1e-4)
     min_replay_size: int = 1000
     max_replay_size: int = 1000000
@@ -76,7 +76,7 @@ class D3PGConfig:
     accelerator: Optional[str] = 'GPU'
 
 
-class MOD3PGAgent(base_agent.Agent):
+class D3PGAgent(base_agent.Agent):
     """D3PG Agent.
     This implements a single-process D3PG agent. This is an actor-critic algorithm
     that generates data via a behavior policy, inserts N-step transitions into
@@ -89,36 +89,26 @@ class MOD3PGAgent(base_agent.Agent):
         config: D3PGConfig,
         environment,
         environment_spec,
-        networks: Optional[MAMOD3PGNetworks] = None,
+        networks: Optional[D3PGNetworks] = None,
     ):
         """Initialize the agent.
         Args:
             config: Configuration for the agent.
         """
-        
         self._config = config
         self._accelerator = config.accelerator
 
         if not self._accelerator:
             self._accelerator = get_first_available_accelerator_type(['TPU', 'GPU', 'CPU'])
-        
+
         if networks is None:
-            online_networks = make_default_MAMOD3PGNetworks(
+            online_networks = make_default_D3PGNetworks(
                 vehicle_action_spec=environment.vehicle_action_spec,
                 edge_action_spec=environment.edge_action_spec,
-                
-                vehicle_number=environment._config.vehicle_number,
-                vehicle_action_number=environment._vehicle_action_size,
-                vehicle_observation_size=environment._vehicle_observation_size,
-                edge_observation_size=environment._edge_observation_size,
-                edge_action_number=environment._edge_action_size,
-                
-                weights_number=environment._config.weighting_number,
-                # random_action_size=environment._config.random_action_size,
             )
         else:
             online_networks = networks
-        
+
         self._environment = environment
         self._environment_spec = environment_spec
         # Target networks are just a copy of the online networks.
@@ -262,8 +252,8 @@ class MOD3PGAgent(base_agent.Agent):
 
     def make_learner(
         self,
-        online_networks: MAMOD3PGNetworks, 
-        target_networks: MAMOD3PGNetworks,
+        online_networks: D3PGNetworks, 
+        target_networks: D3PGNetworks,
         dataset: Iterator[reverb.ReplaySample],
         counter: Optional[counting.Counter] = None,
         logger: Optional[loggers.Logger] = None,
@@ -311,18 +301,18 @@ class MOD3PGAgent(base_agent.Agent):
         )
 
 
-class MAMODistributedDDPG:
+class MultiAgentDistributedDDPG:
     """Program definition for MAD3PG."""
     def __init__(
         self,
         config: D3PGConfig,
         environment_file_name: str,
         environment_spec,
-        networks: Optional[MAMOD3PGNetworks] = None,
+        networks: Optional[D3PGNetworks] = None,
         num_actors: int = 1,
         num_caches: int = 0,
         max_actor_steps: Optional[int] = None,
-        log_every: float = 5.0,
+        log_every: float = 30.0,
     ):
         """Initialize the MAD3PG agent."""
         self._config = config
@@ -339,9 +329,9 @@ class MAMODistributedDDPG:
         self._networks = networks
         self._environment_spec = environment_spec
         self._environment_file_name = environment_file_name
-        # Create the agent.
         
-        self._agent = MOD3PGAgent(
+        # Create the agent.
+        self._agent = D3PGAgent(
             config=self._config,
             environment=load_obj(self._environment_file_name),
             environment_spec=self._environment_spec,
@@ -411,8 +401,9 @@ class MAMODistributedDDPG:
             sigma=self._config.sigma,
         )
         
+        
         # Create the environment
-        environment=load_obj(self._environment_file_name)
+        environment = load_obj(self._environment_file_name)
 
         # Create the agent.
         actor = self._agent.make_actor(
@@ -453,7 +444,7 @@ class MAMODistributedDDPG:
         vehicle_policy_network, edge_policy_network = networks.make_policy(self._environment_spec)
 
         # Make the environment
-        environment=load_obj(self._environment_file_name)
+        environment = load_obj(self._environment_file_name)
 
         # Create the agent.
         actor = self._agent.make_actor(
@@ -479,7 +470,7 @@ class MAMODistributedDDPG:
             label='Evaluator_Loop',
         )
 
-    def build(self, name='mamod3pg'):
+    def build(self, name='mad3pg'):
         """Build the distributed agent topology."""
         program = lp.Program(name=name)
 

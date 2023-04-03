@@ -208,13 +208,13 @@ class vehicularNetworkEnv(baseEnvironment):
         Defined the shape of the observation space.
         """
         vehicle_observation_size: int = 1 + 1 + 1 + self._config.sensed_information_number + self._config.sensed_information_number + \
-            self._config.information_number + self._config.information_number 
+            self._config.information_number + self._config.information_number + 2
             # now_time_slot + vehicle_index + distance + information_canbe_sensed + sensing_cost_of_information + \
-            # information_in_edge + information_requried
+            # information_in_edge + information_requried + weights
         edge_observation_size: int = 1 + self._config.vehicle_number + self._config.sensed_information_number * 2 * self._config.vehicle_number + \
-            self._config.information_number + self._config.information_number
+            self._config.information_number + self._config.information_number + 2
             # now_time_slot + vehicle distances + information_canbe_senseds + sensing_cost_of_informations +  \
-            # information_in_edge + information_requried
+            # information_in_edge + information_requried + weights
         observation_size: int = edge_observation_size
         
         """
@@ -346,6 +346,9 @@ class vehicularNetworkEnv(baseEnvironment):
                 information_objects_ordered_by_views=information_objects[0],
             )
             # myapp.debug(f"\ninformation_objects_ordered_by_views:\n{self.string_of_information_objects_ordered_by_views(information_objects_ordered_by_views)}")
+            # self.generate_weights()
+            # print("self.weights:", self._weights)
+            
             observation = self._observation()
 
             vehicle_observation = self.get_vehicle_observations(
@@ -357,8 +360,6 @@ class vehicularNetworkEnv(baseEnvironment):
                 is_output_two_dimension=True,
             )
 
-            self.generate_weights()
-            # print("self.weights:", self._weights)
             # check for termination
             if self._time_slots.is_end():
                 self._reset_next_step = True
@@ -1110,6 +1111,11 @@ class vehicularNetworkEnv(baseEnvironment):
         for _ in range(self._config.information_number):
             observation[index] = float(self._information_requirements.get_information_required_at_now(self._time_slots.now())[_])
             index += 1
+        
+        for _ in range(self._config.weighting_number):
+            observation[index] = self._weights[_]
+            index += 1
+        
         return observation
 
     @staticmethod
@@ -1177,6 +1183,13 @@ class vehicularNetworkEnv(baseEnvironment):
         for _ in range(information_number):
             for __ in range(vehicle_number):
                 vehicle_observations[__ , index] = observation[observation_index]
+            observation_index += 1
+            index += 1
+            
+        # weights
+        for _ in range(2):
+            for __ in range(vehicle_number):
+                vehicle_observations[__, index] = observation[observation_index]
             observation_index += 1
             index += 1
 
@@ -1517,6 +1530,12 @@ class vehicularNetworkEnv(baseEnvironment):
         for i in range(self._config.weighting_number):
             self._weights[i] = all_weights[0][i]
         # print("self._weights: ", self._weights)
+        
+        # self._weights[0] = 0.5
+        # self._weights[1] = 0.5
+        
+        print("self._weights[0]: ", self._weights[0])
+        print("self._weights[1]: ", self._weights[1])
 
 
 Array = specs.Array

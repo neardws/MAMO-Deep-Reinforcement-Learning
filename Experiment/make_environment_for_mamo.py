@@ -1,7 +1,7 @@
 import sys
 sys.path.append(r"/home/neardws/Documents/AoV-Journal-Algorithm/")
 
-from Environments.environment import vehicularNetworkEnv
+from Environments.environment_for_mamo import vehicularNetworkEnv
 from Environments.environmentConfig import vehicularNetworkEnvConfig
 from Utilities.FileOperator import save_obj, init_file_name
 
@@ -29,7 +29,7 @@ def make_default_environment(
 if __name__ == "__main__":
     # make_default_environment(bandwidth=1)
     # make_default_environment(bandwidth=1.5)
-    # make_default_environment(bandwidth=2)
+    make_default_environment(bandwidth=2)
     # make_default_environment(bandwidth=2.5)
     # make_default_environment(bandwidth=3)
 
@@ -43,5 +43,5 @@ if __name__ == "__main__":
     # make_default_environment(required_information_number=12)
     # make_default_environment(required_information_number=14)
     
-    make_default_environment(trajectories_file_name='CSV/trajectories_20161116_2300_2305.csv')
-    make_default_environment(trajectories_file_name='CSV/trajectories_20161127_0800_0805.csv')
+    # make_default_environment(trajectories_file_name='CSV/trajectories_20161116_2300_2305.csv')
+    # make_default_environment(trajectories_file_name='CSV/trajectories_20161127_0800_0805.csv')

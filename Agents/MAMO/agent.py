@@ -8,10 +8,10 @@ from acme import adders
 from acme import core
 from acme import datasets
 from acme.adders import reverb as reverb_adders
-from Agents.MAMOD3PG.adder import NStepTransitionAdder
-from Agents.MAMOD3PG import actors
-from Agents.MAMOD3PG import learning
-from Agents.MAMOD3PG import base_agent
+from Agents.MAMO.adder import NStepTransitionAdder
+from Agents.MAMO import actors
+from Agents.MAMO import learning
+from Agents.MAMO import base_agent
 from acme.tf import variable_utils
 from acme.tf import savers as tf2_savers
 from acme.utils import counting
@@ -23,7 +23,7 @@ import sonnet as snt
 import launchpad as lp
 import functools
 from Utilities.FileOperator import load_obj
-from Agents.MAMOD3PG.networks import MAMOD3PGNetworks, make_default_MAMOD3PGNetworks
+from Agents.MAMO.networks import MAMOD3PGNetworks, make_default_MAMOD3PGNetworks
 
 Replicator = Union[snt.distribute.Replicator, snt.distribute.TpuReplicator]
 
