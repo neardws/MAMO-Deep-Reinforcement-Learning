@@ -130,3 +130,12 @@ dmypy.json
 
 CSV/
 .vscode
+CSV/*
+Data/
+Data/*
+Figure/
+Figure/*
+Results/
+Results/*
+Test/
+Test/*
